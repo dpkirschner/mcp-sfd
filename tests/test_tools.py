@@ -150,7 +150,7 @@ class TestLatestIncident:
             mock_fetch.assert_called_once()
             call_args = mock_fetch.call_args[0][0]
             assert call_args["order"] == "new"
-            assert call_args["length"] == 1
+            assert call_args["length"] == 10
 
             # Check result structure
             assert "incident" in result
