@@ -1,0 +1,178 @@
+{
+  "draw": 1,
+  "recordsTotal": 156,
+  "recordsFiltered": 156,
+  "data": [
+    {
+      "0": {
+        "id": 12345,
+        "incident_number": "F250915-001",
+        "type": "Fire in Building",
+        "type_code": "FIR",
+        "description": "STRUCTURE FIRE - COMMERCIAL BUILDING",
+        "description_clean": "Structure fire at commercial building with heavy smoke",
+        "response_type": "Emergency",
+        "response_mode": "Hot",
+        "datetime": "2025-09-15 16:05:27",
+        "latitude": {
+          "source": "address",
+          "parsedValue": 47.6062
+        },
+        "longitude": {
+          "source": "address",
+          "parsedValue": -122.3321
+        },
+        "address": "123 Main St, Seattle, WA",
+        "area": "Downtown",
+        "battalion": "B1",
+        "units_dispatched": "E16*, L15, E32",
+        "primary_unit": "E16",
+        "unit_status": {
+          "E16": {
+            "dispatched": "2025-09-15 16:05:30",
+            "arrived": "2025-09-15 16:08:15",
+            "transport": null,
+            "in_service": null
+          },
+          "L15": {
+            "dispatched": "2025-09-15 16:05:32",
+            "arrived": "2025-09-15 16:09:45",
+            "transport": null,
+            "in_service": null
+          },
+          "E32": {
+            "dispatched": "2025-09-15 16:06:00",
+            "arrived": null,
+            "transport": null,
+            "in_service": null
+          }
+        },
+        "active": 1,
+        "alarm": 2,
+        "late": 0
+      }
+    },
+    {
+      "1": {
+        "id": 12346,
+        "incident_number": "M250915-002",
+        "type": "Medical Aid",
+        "type_code": "MED",
+        "description": "MEDICAL EMERGENCY - CHEST PAIN",
+        "description_clean": "Medical emergency for chest pain",
+        "response_type": "Emergency",
+        "response_mode": "Hot",
+        "datetime": "2025-09-15 15:45:12",
+        "latitude": 47.6205,
+        "longitude": -122.3493,
+        "address": "456 Pine St, Seattle, WA",
+        "area": "Capitol Hill",
+        "battalion": "B2",
+        "units_dispatched": "M27, E25",
+        "primary_unit": "M27",
+        "unit_status": {
+          "M27": {
+            "dispatched": "2025-09-15 15:45:15",
+            "arrived": "2025-09-15 15:48:30",
+            "transport": "2025-09-15 16:02:15",
+            "in_service": "2025-09-15 16:25:45"
+          },
+          "E25": {
+            "dispatched": "2025-09-15 15:45:18",
+            "arrived": "2025-09-15 15:49:00",
+            "transport": null,
+            "in_service": "2025-09-15 16:15:30"
+          }
+        },
+        "active": 0,
+        "alarm": 1,
+        "late": 0
+      }
+    },
+    {
+      "2": {
+        "id": 12347,
+        "incident_number": "F250915-003",
+        "type": "Car Fire",
+        "type_code": "FIR",
+        "description": "VEHICLE FIRE - FREEWAY",
+        "description_clean": "Vehicle fire on I-5 northbound",
+        "response_type": "Emergency",
+        "response_mode": "Hot",
+        "datetime": "2025-09-15 14:30:55",
+        "latitude": null,
+        "longitude": null,
+        "address": "I-5 NB @ Exit 165",
+        "area": "North Seattle",
+        "battalion": "B3",
+        "units_dispatched": "E31*,E44",
+        "primary_unit": "E31",
+        "unit_status": {
+          "E31": {
+            "dispatched": "2025-09-15 14:31:00",
+            "arrived": "2025-09-15 14:38:45",
+            "transport": null,
+            "in_service": "2025-09-15 15:05:20"
+          },
+          "E44": {
+            "dispatched": "2025-09-15 14:31:15",
+            "arrived": "2025-09-15 14:42:10",
+            "transport": null,
+            "in_service": "2025-09-15 15:10:35"
+          }
+        },
+        "active": 0,
+        "alarm": 1,
+        "late": 0
+      }
+    },
+    {
+      "3": {
+        "id": 12348,
+        "incident_number": "R250915-004",
+        "type": "Water Rescue",
+        "type_code": "WTR",
+        "description": "WATER RESCUE - LAKE WASHINGTON",
+        "description_clean": "Person in water at Seward Park",
+        "response_type": "Emergency",
+        "response_mode": "Hot",
+        "datetime": "2025-09-15 13:15:33",
+        "latitude": 47.5501,
+        "longitude": -122.2570,
+        "address": "5895 Lake Washington Blvd S",
+        "area": "South Seattle",
+        "battalion": "B4",
+        "units_dispatched": "R1, E13, M14",
+        "primary_unit": "R1",
+        "unit_status": {
+          "R1": {
+            "dispatched": "2025-09-15 13:15:35",
+            "arrived": "2025-09-15 13:22:18",
+            "transport": null,
+            "in_service": "2025-09-15 14:45:22"
+          },
+          "E13": {
+            "dispatched": "2025-09-15 13:15:40",
+            "arrived": "2025-09-15 13:24:05",
+            "transport": null,
+            "in_service": "2025-09-15 14:30:15"
+          },
+          "M14": {
+            "dispatched": "2025-09-15 13:16:00",
+            "arrived": "2025-09-15 13:25:45",
+            "transport": "2025-09-15 13:45:30",
+            "in_service": "2025-09-15 14:15:20"
+          }
+        },
+        "active": 0,
+        "alarm": 1,
+        "late": 0
+      }
+    }
+  ],
+  "page": 1,
+  "length": 100,
+  "start": 0,
+  "order": "new",
+  "users_online": 42
+}
