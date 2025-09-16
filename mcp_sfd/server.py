@@ -275,13 +275,13 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
         return [TextContent(type="text", text=error_msg)]
 
 
-async def cleanup():
+async def cleanup() -> None:
     """Cleanup resources on shutdown."""
     logger.info("Shutting down MCP server")
     await close_client()
 
 
-async def main():
+async def main() -> None:
     """Main entry point for the MCP server."""
     logger.info("Starting MCP SFD server")
 
@@ -312,7 +312,7 @@ async def main():
         await cleanup()
 
 
-def cli_main():
+def cli_main() -> None:
     """CLI entry point for the server."""
     try:
         asyncio.run(main())

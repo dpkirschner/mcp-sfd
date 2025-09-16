@@ -240,7 +240,7 @@ def flatten_data_array(data: list[Any]) -> list[dict[str, Any]]:
 
         # Check if this looks like an incident object directly
         # Incidents should have keys like 'id', 'address', 'type', 'incident_number'
-        incident_keys = {'id', 'address', 'type', 'incident_number', 'datetime'}
+        incident_keys = {"id", "address", "type", "incident_number", "datetime"}
         if any(key in item for key in incident_keys):
             # This is already an incident object, use it directly
             incidents.append(item)
@@ -253,7 +253,9 @@ def flatten_data_array(data: list[Any]) -> list[dict[str, Any]]:
         else:
             # Find the first dict value that looks like an incident
             for value in item.values():
-                if isinstance(value, dict) and any(key in value for key in incident_keys):
+                if isinstance(value, dict) and any(
+                    key in value for key in incident_keys
+                ):
                     incident_data = value
                     break
 

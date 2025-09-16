@@ -34,7 +34,7 @@ class CacheEntry:
 class SFDClient:
     """HTTP client for Seattle Fire Department API with caching and retry logic."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.base_url = os.getenv("SFD_BASE_URL", "https://sfdlive.com/api/data/")
         self.default_cache_ttl = int(os.getenv("DEFAULT_CACHE_TTL", "15"))
         self._cache: dict[str, CacheEntry] = {}
@@ -75,7 +75,7 @@ class SFDClient:
     ) -> tuple[dict[str, Any], bool]:
         """Make HTTP request with retry logic."""
         client = await self._get_client()
-        last_exception = None
+        last_exception: httpx.RequestError | httpx.TimeoutException | None = None
 
         for attempt in range(3):  # Initial attempt + 2 retries
             try:
@@ -116,7 +116,7 @@ class SFDClient:
                         raise MCPToolError(
                             "SCHEMA_VALIDATION_ERROR",
                             f"Invalid JSON response from upstream API: {e}",
-                        )
+                        ) from e
 
                 # Retry on server errors
                 if response.status_code in (502, 503, 504):

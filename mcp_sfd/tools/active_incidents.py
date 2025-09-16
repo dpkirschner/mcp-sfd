@@ -10,7 +10,11 @@ from typing import Any
 
 from ..http_client import get_client
 from ..normalize import normalize_full_response
-from ..schemas import FetchRawInput, Incident, ActiveIncidentSummary, ActiveIncidentsLightResponse
+from ..schemas import (
+    ActiveIncidentsLightResponse,
+    ActiveIncidentSummary,
+    Incident,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -82,7 +86,7 @@ async def active_incidents(arguments: dict[str, Any]) -> dict[str, Any]:
 
         raise MCPToolError(
             "SCHEMA_VALIDATION_ERROR", f"Failed to parse upstream response: {e}"
-        )
+        ) from e
 
     # Filter for active incidents only
     all_incidents = []
@@ -91,9 +95,7 @@ async def active_incidents(arguments: dict[str, Any]) -> dict[str, Any]:
         all_incidents.append(incident)
 
     # Filter to active incidents only
-    active_incidents_list = [
-        incident for incident in all_incidents if incident.active
-    ]
+    active_incidents_list = [incident for incident in all_incidents if incident.active]
 
     # Create lightweight summaries to reduce token usage
     incident_summaries = []

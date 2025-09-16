@@ -7,7 +7,7 @@ potential evacuation orders or advisories.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytz
 
@@ -121,7 +121,7 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
         input_data = HasEvacuationOrdersInput(**arguments)
     except Exception as e:
         logger.error(f"Invalid input arguments: {e}")
-        raise ValueError(f"Invalid arguments: {e}")
+        raise ValueError(f"Invalid arguments: {e}") from e
 
     logger.info(
         "Checking for evacuation orders",
@@ -182,13 +182,19 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
     # Create response
     response_data = {
         "has_evacuation_orders": has_evacuation,
-        "supporting_incidents": [inc.model_dump() for inc in evacuation_incidents],
+        "supporting_incidents": evacuation_incidents,
         "notes": notes,
     }
 
     # Validate output
     try:
-        validated_response = HasEvacuationOrdersResponse(**response_data)
+        validated_response = HasEvacuationOrdersResponse(
+            has_evacuation_orders=cast(bool, response_data["has_evacuation_orders"]),
+            supporting_incidents=cast(
+                list[Incident], response_data["supporting_incidents"]
+            ),
+            notes=cast(str, response_data["notes"]),
+        )
         result = validated_response.model_dump()
     except Exception as e:
         logger.error(f"Response validation failed: {e}")
@@ -196,7 +202,7 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
 
         raise MCPToolError(
             "SCHEMA_VALIDATION_ERROR", f"Response validation failed: {e}"
-        )
+        ) from e
 
     logger.info(
         "Completed evacuation order check",

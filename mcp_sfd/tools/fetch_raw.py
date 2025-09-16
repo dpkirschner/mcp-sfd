@@ -36,7 +36,7 @@ async def fetch_raw(arguments: dict[str, Any]) -> dict[str, Any]:
         input_data = FetchRawInput(**arguments)
     except Exception as e:
         logger.error(f"Invalid input arguments: {e}")
-        raise ValueError(f"Invalid arguments: {e}")
+        raise ValueError(f"Invalid arguments: {e}") from e
 
     # Prepare query parameters for upstream API
     query_params = {
@@ -86,7 +86,7 @@ async def fetch_raw(arguments: dict[str, Any]) -> dict[str, Any]:
 
         raise MCPToolError(
             "SCHEMA_VALIDATION_ERROR", f"Failed to parse upstream response: {e}"
-        )
+        ) from e
 
     # Validate output against schema
     try:
@@ -98,7 +98,7 @@ async def fetch_raw(arguments: dict[str, Any]) -> dict[str, Any]:
 
         raise MCPToolError(
             "SCHEMA_VALIDATION_ERROR", f"Response validation failed: {e}"
-        )
+        ) from e
 
     logger.info(
         "Successfully fetched and normalized incidents",

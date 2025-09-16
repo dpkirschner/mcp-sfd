@@ -36,7 +36,7 @@ async def latest_incident(arguments: dict[str, Any]) -> dict[str, Any]:
         LatestIncidentInput(**arguments)
     except Exception as e:
         logger.error(f"Invalid input arguments: {e}")
-        raise ValueError(f"Invalid arguments: {e}")
+        raise ValueError(f"Invalid arguments: {e}") from e
 
     logger.info("Fetching latest 10 incidents for pattern analysis")
 
@@ -86,7 +86,11 @@ async def latest_incident(arguments: dict[str, Any]) -> dict[str, Any]:
                     "units": incident.units or [],
                     "unit_count": len(incident.units) if incident.units else 0,
                     "active": incident.active,
-                    "datetime_local": incident.datetime_local.isoformat() if incident.datetime_local else "NO_TIME",
+                    "datetime_local": (
+                        incident.datetime_local.isoformat()
+                        if incident.datetime_local
+                        else "NO_TIME"
+                    ),
                     "latitude": incident.latitude,
                     "longitude": incident.longitude,
                     "raw_keys": list(incident.raw.keys()) if incident.raw else [],
@@ -99,6 +103,7 @@ async def latest_incident(arguments: dict[str, Any]) -> dict[str, Any]:
 
     if not validated_incidents:
         from ..http_client import MCPToolError
+
         raise MCPToolError("SCHEMA_VALIDATION_ERROR", "No valid incidents found")
 
     # Get the first (latest) incident for backward compatibility
@@ -107,7 +112,9 @@ async def latest_incident(arguments: dict[str, Any]) -> dict[str, Any]:
     # Create response with all incidents
     response_data = {
         "incident": latest.model_dump(),  # Keep single incident for compatibility
-        "all_incidents": [inc.model_dump() for inc in validated_incidents],  # Add all incidents
+        "all_incidents": [
+            inc.model_dump() for inc in validated_incidents
+        ],  # Add all incidents
         "incident_count": len(validated_incidents),
         "source": raw_response["source"],  # Pass the complete source object
     }
@@ -115,10 +122,9 @@ async def latest_incident(arguments: dict[str, Any]) -> dict[str, Any]:
     # Note: We'll keep the existing LatestIncidentResponse schema for now
     # and add the extra fields which will be included in the raw output
     try:
-        validated_response = LatestIncidentResponse(**{
-            "incident": response_data["incident"],
-            "source": response_data["source"]
-        })
+        validated_response = LatestIncidentResponse(
+            **{"incident": response_data["incident"], "source": response_data["source"]}
+        )
         result = validated_response.model_dump()
         # Add our extra fields
         result["all_incidents"] = response_data["all_incidents"]
@@ -129,14 +135,18 @@ async def latest_incident(arguments: dict[str, Any]) -> dict[str, Any]:
 
         raise MCPToolError(
             "SCHEMA_VALIDATION_ERROR", f"Response validation failed: {e}"
-        )
+        ) from e
 
     logger.info(
         f"Successfully fetched {len(validated_incidents)} incidents",
         extra={
             "total_incidents": len(validated_incidents),
             "latest_incident_type": latest.type,
-            "latest_datetime": latest.datetime_local.isoformat() if latest.datetime_local else "NO_TIME",
+            "latest_datetime": (
+                latest.datetime_local.isoformat()
+                if latest.datetime_local
+                else "NO_TIME"
+            ),
         },
     )
 

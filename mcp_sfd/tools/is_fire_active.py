@@ -7,7 +7,7 @@ descriptions, and unit status information.
 
 import logging
 from datetime import datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytz
 
@@ -171,7 +171,7 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         input_data = IsFireActiveInput(**arguments)
     except Exception as e:
         logger.error(f"Invalid input arguments: {e}")
-        raise ValueError(f"Invalid arguments: {e}")
+        raise ValueError(f"Invalid arguments: {e}") from e
 
     logger.info(
         "Checking for active fire incidents",
@@ -212,11 +212,15 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
                 "active": incident.active,
                 "units": incident.units or [],
                 "unit_count": len(incident.units) if incident.units else 0,
-                "datetime_local": incident.datetime_local.isoformat() if incident.datetime_local else "NO_TIME",
+                "datetime_local": (
+                    incident.datetime_local.isoformat()
+                    if incident.datetime_local
+                    else "NO_TIME"
+                ),
                 "raw_data_keys": list(incident.raw.keys()) if incident.raw else [],
                 "raw_name": incident.raw.get("name") if incident.raw else None,
                 "raw_zoning": incident.raw.get("zoning") if incident.raw else None,
-            }
+            },
         )
 
     # Filter by timeframe
@@ -224,7 +228,9 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         all_incidents, input_data.lookbackMinutes
     )
 
-    logger.info(f"Filtered to {len(recent_incidents)} incidents within {input_data.lookbackMinutes} minutes")
+    logger.info(
+        f"Filtered to {len(recent_incidents)} incidents within {input_data.lookbackMinutes} minutes"
+    )
 
     # Analyze incidents for fire activity
     active_fire_incidents = []
@@ -245,10 +251,14 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
                 "active_flag": incident.active,
                 "units": incident.units or [],
                 "unit_status": incident.unit_status or {},
-                "datetime_local": incident.datetime_local.isoformat() if incident.datetime_local else "NO_TIME",
+                "datetime_local": (
+                    incident.datetime_local.isoformat()
+                    if incident.datetime_local
+                    else "NO_TIME"
+                ),
                 "raw_name": incident.raw.get("name") if incident.raw else None,
                 "raw_zoning": incident.raw.get("zoning") if incident.raw else None,
-            }
+            },
         )
 
         # Check if fire-related
@@ -323,13 +333,19 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
     # Create response
     response_data = {
         "is_fire_active": is_fire_active_result,
-        "matching_incidents": [inc.model_dump() for inc in active_fire_incidents],
+        "matching_incidents": active_fire_incidents,
         "reasoning": reasoning,
     }
 
     # Validate output
     try:
-        validated_response = IsFireActiveResponse(**response_data)
+        validated_response = IsFireActiveResponse(
+            is_fire_active=cast(bool, response_data["is_fire_active"]),
+            matching_incidents=cast(
+                list[Incident], response_data["matching_incidents"]
+            ),
+            reasoning=cast(str, response_data["reasoning"]),
+        )
         result = validated_response.model_dump()
     except Exception as e:
         logger.error(f"Response validation failed: {e}")
@@ -337,7 +353,7 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
 
         raise MCPToolError(
             "SCHEMA_VALIDATION_ERROR", f"Response validation failed: {e}"
-        )
+        ) from e
 
     logger.info(
         "Completed fire activity check",
