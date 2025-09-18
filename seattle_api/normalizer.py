@@ -51,7 +51,7 @@ class IncidentNormalizer:
 
             return Incident(
                 incident_id=raw_incident.incident_id,
-                datetime=incident_datetime,
+                incident_datetime=incident_datetime,
                 priority=priority,
                 units=units,
                 address=raw_incident.address,

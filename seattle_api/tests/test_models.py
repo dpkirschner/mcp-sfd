@@ -28,7 +28,7 @@ class TestIncident:
         now = datetime.now()
         incident = Incident(
             incident_id="F240001234",
-            datetime=now,
+            incident_datetime=now,
             priority=3,
             units=["E17", "L9"],
             address="123 Main St",
@@ -39,24 +39,24 @@ class TestIncident:
         )
         
         assert incident.incident_id == "F240001234"
-        assert incident.datetime == now
+        assert incident.incident_datetime == now
         assert incident.priority == 3
         assert incident.units == ["E17", "L9"]
         assert incident.address == "123 Main St"
         assert incident.incident_type == "Aid Response"
-        assert incident.status == IncidentStatus.ACTIVE
+        assert incident.status == "active"
         assert incident.first_seen == now
         assert incident.last_seen == now
         assert incident.closed_at is None
     
-    def test_incident_to_dict(self):
-        """Test converting Incident to dictionary."""
+    def test_incident_serialization(self):
+        """Test Pydantic model serialization."""
         now = datetime(2024, 1, 15, 10, 30, 0)
         closed_time = datetime(2024, 1, 15, 11, 0, 0)
-        
+
         incident = Incident(
             incident_id="F240001234",
-            datetime=now,
+            incident_datetime=now,
             priority=3,
             units=["E17", "L9"],
             address="123 Main St",
@@ -66,39 +66,20 @@ class TestIncident:
             last_seen=now,
             closed_at=closed_time
         )
-        
-        result = incident.to_dict()
-        
+
+        # Test model_dump
+        result = incident.model_dump()
+
         assert result["incident_id"] == "F240001234"
-        assert result["datetime"] == now.isoformat()
+        assert result["incident_datetime"] == now
         assert result["priority"] == 3
         assert result["units"] == ["E17", "L9"]
         assert result["address"] == "123 Main St"
         assert result["incident_type"] == "Aid Response"
         assert result["status"] == "closed"
-        assert result["first_seen"] == now.isoformat()
-        assert result["last_seen"] == now.isoformat()
-        assert result["closed_at"] == closed_time.isoformat()
-    
-    def test_incident_to_dict_no_closed_at(self):
-        """Test converting Incident to dictionary when closed_at is None."""
-        now = datetime(2024, 1, 15, 10, 30, 0)
-        
-        incident = Incident(
-            incident_id="F240001234",
-            datetime=now,
-            priority=3,
-            units=["E17"],
-            address="123 Main St",
-            incident_type="Aid Response",
-            status=IncidentStatus.ACTIVE,
-            first_seen=now,
-            last_seen=now
-        )
-        
-        result = incident.to_dict()
-        
-        assert result["closed_at"] is None
+        assert result["first_seen"] == now
+        assert result["last_seen"] == now
+        assert result["closed_at"] == closed_time
 
 
 class TestRawIncident:

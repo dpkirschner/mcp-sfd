@@ -1,9 +1,10 @@
 """Data models for Seattle Fire Department incidents."""
 
-from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from typing import List, Optional
+
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 class IncidentStatus(Enum):
@@ -12,66 +13,116 @@ class IncidentStatus(Enum):
     CLOSED = "closed"
 
 
-@dataclass
-class Incident:
+class Incident(BaseModel):
     """Represents a Seattle Fire Department incident."""
-    
-    incident_id: str
-    datetime: datetime  # UTC timestamp
-    priority: int
-    units: List[str]  # ["E17", "L9"]
-    address: str
-    incident_type: str  # "Aid Response", "Rescue Elevator"
-    status: IncidentStatus  # ACTIVE, CLOSED
-    first_seen: datetime  # When first detected
-    last_seen: datetime   # Last time in active feed
-    closed_at: Optional[datetime] = None  # When marked closed
-    
-    def to_dict(self) -> dict:
-        """Convert incident to dictionary for JSON serialization."""
-        return {
-            "incident_id": self.incident_id,
-            "datetime": self.datetime.isoformat(),
-            "priority": self.priority,
-            "units": self.units,
-            "address": self.address,
-            "incident_type": self.incident_type,
-            "status": self.status.value,
-            "first_seen": self.first_seen.isoformat(),
-            "last_seen": self.last_seen.isoformat(),
-            "closed_at": self.closed_at.isoformat() if self.closed_at else None
+
+    incident_id: str = Field(..., min_length=1, description="Unique incident identifier")
+    incident_datetime: datetime = Field(..., description="Incident datetime in UTC")
+    priority: int = Field(..., ge=1, le=10, description="Incident priority (1-10)")
+    units: List[str] = Field(default_factory=list, description="List of responding units")
+    address: str = Field(..., min_length=1, description="Incident address")
+    incident_type: str = Field(..., min_length=1, description="Type of incident")
+    status: IncidentStatus = Field(default=IncidentStatus.ACTIVE, description="Current incident status")
+    first_seen: datetime = Field(..., description="When incident was first detected")
+    last_seen: datetime = Field(..., description="Last time incident was seen in active feed")
+    closed_at: Optional[datetime] = Field(None, description="When incident was marked closed")
+
+    @field_validator('incident_id')
+    @classmethod
+    def validate_incident_id(cls, v):
+        """Validate incident ID format."""
+        if not v or not v.strip():
+            raise ValueError('Incident ID cannot be empty')
+        return v.strip()
+
+    @field_validator('address')
+    @classmethod
+    def validate_address(cls, v):
+        """Validate and clean address."""
+        if not v or not v.strip():
+            raise ValueError('Address cannot be empty')
+        return v.strip()
+
+    @field_validator('incident_type')
+    @classmethod
+    def validate_incident_type(cls, v):
+        """Validate and clean incident type."""
+        if not v or not v.strip():
+            raise ValueError('Incident type cannot be empty')
+        return v.strip()
+
+    @field_validator('units')
+    @classmethod
+    def validate_units(cls, v):
+        """Validate units list."""
+        # Filter out empty strings and clean units
+        cleaned_units = [unit.strip() for unit in v if unit and unit.strip()]
+        return cleaned_units
+
+    model_config = ConfigDict(
+        use_enum_values=True,
+        json_encoders={
+            datetime: lambda v: v.isoformat(),
+            IncidentStatus: lambda v: v.value
         }
+    )
 
 
-@dataclass
-class RawIncident:
+class RawIncident(BaseModel):
     """Raw incident data from HTML parsing."""
-    
-    datetime_str: str
-    incident_id: str
-    priority_str: str
-    units_str: str
-    address: str
-    incident_type: str
+
+    datetime_str: str = Field(..., min_length=1, description="Raw datetime string from HTML")
+    incident_id: str = Field(..., min_length=1, description="Raw incident ID from HTML")
+    priority_str: str = Field(..., description="Raw priority string from HTML")
+    units_str: str = Field(default="", description="Raw units string from HTML")
+    address: str = Field(..., min_length=1, description="Raw address from HTML")
+    incident_type: str = Field(..., min_length=1, description="Raw incident type from HTML")
+
+    @field_validator('datetime_str', 'incident_id', 'address', 'incident_type')
+    @classmethod
+    def validate_required_fields(cls, v):
+        """Validate required fields are not empty."""
+        if not v or not v.strip():
+            raise ValueError('Field cannot be empty')
+        return v.strip()
+
+    @field_validator('units_str', 'priority_str')
+    @classmethod
+    def clean_optional_fields(cls, v):
+        """Clean optional fields."""
+        return v.strip() if v else ""
 
 
-@dataclass
-class IncidentSearchFilters:
+class IncidentSearchFilters(BaseModel):
     """Filters for searching incidents."""
-    
-    incident_type: Optional[str] = None
-    address_contains: Optional[str] = None
-    since: Optional[datetime] = None
-    until: Optional[datetime] = None
-    status: Optional[IncidentStatus] = None
-    priority: Optional[int] = None
+
+    incident_type: Optional[str] = Field(None, description="Filter by incident type")
+    address_contains: Optional[str] = Field(None, description="Filter by address containing text")
+    since: Optional[datetime] = Field(None, description="Filter incidents after this datetime")
+    until: Optional[datetime] = Field(None, description="Filter incidents before this datetime")
+    status: Optional[IncidentStatus] = Field(None, description="Filter by incident status")
+    priority: Optional[int] = Field(None, ge=1, le=10, description="Filter by priority level")
+
+    @field_validator('incident_type', 'address_contains')
+    @classmethod
+    def clean_string_filters(cls, v):
+        """Clean string filter values."""
+        return v.strip() if v else None
 
 
-@dataclass
-class HealthStatus:
+class HealthStatus(BaseModel):
     """Health status response."""
-    
-    status: str
-    service: str
-    version: str
-    config: dict
+
+    status: str = Field(..., description="Service health status")
+    service: str = Field(..., description="Service name")
+    version: str = Field(..., description="Service version")
+    config: dict = Field(default_factory=dict, description="Configuration details")
+
+    @field_validator('status')
+    @classmethod
+    def validate_status(cls, v):
+        """Validate status is one of expected values."""
+        valid_statuses = ['healthy', 'degraded', 'unhealthy']
+        if v not in valid_statuses:
+            raise ValueError(f'Status must be one of: {valid_statuses}')
+        return v
