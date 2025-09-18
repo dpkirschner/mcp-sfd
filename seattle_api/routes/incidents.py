@@ -199,6 +199,110 @@ async def get_all_incidents(
 
 
 @router.get(
+    "/search",
+    response_model=IncidentsResponse,
+    summary="Search incidents",
+    description="Search incidents with flexible filtering options"
+)
+async def search_incidents(
+    q: Optional[str] = Query(None, description="General search query (searches type and address)"),
+    limit: int = Query(100, ge=1, le=1000, description="Maximum number of incidents to return"),
+    offset: int = Query(0, ge=0, description="Number of incidents to skip"),
+    status_filter: Optional[IncidentStatus] = Query(None, alias="status", description="Filter by incident status"),
+    incident_type: Optional[str] = Query(None, description="Filter by incident type (partial match)"),
+    address: Optional[str] = Query(None, description="Filter by address (partial match)"),
+    priority: Optional[int] = Query(None, ge=1, le=10, description="Filter by priority level"),
+    since: Optional[datetime] = Query(None, description="Filter incidents after this datetime"),
+    until: Optional[datetime] = Query(None, description="Filter incidents before this datetime"),
+    cache: IncidentCache = Depends(get_cache)
+) -> IncidentsResponse:
+    """Search incidents with flexible filtering options.
+
+    Args:
+        q: General search query that searches both incident type and address
+        limit: Maximum number of incidents to return
+        offset: Number of incidents to skip for pagination
+        status_filter: Filter by incident status
+        incident_type: Filter by incident type (partial match)
+        address: Filter by address (partial match)
+        priority: Filter by priority level
+        since: Filter incidents after this datetime
+        until: Filter incidents before this datetime
+        cache: Cache dependency
+
+    Returns:
+        IncidentsResponse with search results
+
+    Raises:
+        HTTPException: If cache operation fails or validation errors
+    """
+    try:
+        logger.debug(f"Searching incidents with query='{q}', filters: status={status_filter}, "
+                    f"type={incident_type}, address={address}, priority={priority}")
+
+        # Validate datetime range
+        if since and until and since > until:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="'since' parameter must be before 'until' parameter"
+            )
+
+        # Get all incidents from cache
+        all_incidents = cache.get_all_incidents()
+
+        # Apply search filters
+        filtered_incidents = _apply_search_filters(
+            all_incidents,
+            general_query=q,
+            status_filter=status_filter,
+            incident_type=incident_type,
+            address=address,
+            priority=priority,
+            since=since,
+            until=until
+        )
+
+        # Apply pagination
+        total_count = len(filtered_incidents)
+        paginated_incidents = filtered_incidents[offset:offset + limit]
+
+        logger.info(f"Search returned {len(paginated_incidents)} incidents out of {total_count} matches "
+                   f"from {len(all_incidents)} total")
+
+        return IncidentsResponse(
+            success=True,
+            message=f"Found {len(paginated_incidents)} incidents matching search criteria",
+            data=paginated_incidents,
+            count=len(paginated_incidents),
+            metadata={
+                "total_matches": total_count,
+                "total_available": len(all_incidents),
+                "limit": limit,
+                "offset": offset,
+                "has_more": offset + limit < total_count,
+                "search_query": q,
+                "filters_applied": {
+                    "status": status_filter.value if status_filter else None,
+                    "incident_type": incident_type,
+                    "address": address,
+                    "priority": priority,
+                    "since": since.isoformat() if since else None,
+                    "until": until.isoformat() if until else None
+                }
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Failed to search incidents: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to search incidents: {str(e)}"
+        )
+
+
+@router.get(
     "/{incident_id}",
     response_model=IncidentResponse,
     summary="Get specific incident",
@@ -287,7 +391,12 @@ def _apply_filters(
 
     # Filter by status
     if status_filter is not None:
-        filtered = [i for i in filtered if i.status == status_filter]
+        # Handle case where status is stored as enum value (string) due to use_enum_values=True
+        if isinstance(status_filter, IncidentStatus):
+            status_value = status_filter.value
+        else:
+            status_value = status_filter
+        filtered = [i for i in filtered if i.status == status_value]
 
     # Filter by incident type (partial match, case-insensitive)
     if incident_type:
@@ -311,3 +420,53 @@ def _apply_filters(
         filtered = [i for i in filtered if i.incident_datetime <= until]
 
     return filtered
+
+
+def _apply_search_filters(
+    incidents: List[Incident],
+    general_query: Optional[str] = None,
+    status_filter: Optional[IncidentStatus] = None,
+    incident_type: Optional[str] = None,
+    address: Optional[str] = None,
+    priority: Optional[int] = None,
+    since: Optional[datetime] = None,
+    until: Optional[datetime] = None
+) -> List[Incident]:
+    """Apply search filters to incidents list with general query support.
+
+    Args:
+        incidents: List of incidents to filter
+        general_query: General search query that searches across multiple fields
+        status_filter: Filter by incident status
+        incident_type: Filter by incident type (partial match)
+        address: Filter by address (partial match)
+        priority: Filter by priority level
+        since: Filter incidents after this datetime
+        until: Filter incidents before this datetime
+
+    Returns:
+        List of filtered incidents
+    """
+    filtered = incidents
+
+    # Apply general query first (searches across multiple fields)
+    if general_query:
+        query_lower = general_query.lower()
+        filtered = [
+            i for i in filtered
+            if (query_lower in i.incident_type.lower() or
+                query_lower in i.address.lower() or
+                query_lower in i.incident_id.lower() or
+                any(query_lower in unit.lower() for unit in i.units))
+        ]
+
+    # Apply specific filters using existing logic
+    return _apply_filters(
+        filtered,
+        status_filter=status_filter,
+        incident_type=incident_type,
+        address=address,
+        priority=priority,
+        since=since,
+        until=until
+    )
