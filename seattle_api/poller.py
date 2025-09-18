@@ -203,7 +203,7 @@ class IncidentPoller:
             html_content = None
             try:
                 html_content = await self.http_circuit_breaker.call(
-                    lambda: self.http_client.fetch_incidents()
+                    lambda: self.http_client.fetch_incident_html()
                 )
                 successful_operations += 1
                 logger.debug("HTTP fetch completed successfully")
