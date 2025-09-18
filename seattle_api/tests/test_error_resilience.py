@@ -33,7 +33,7 @@ def config():
 def mock_http_client():
     """Mock HTTP client."""
     client = MagicMock(spec=SeattleHTTPClient)
-    client.fetch_incidents = AsyncMock()
+    client.fetch_incident_html = AsyncMock(return_value="<html><body>Mock HTML response</body></html>")
     return client
 
 
@@ -79,7 +79,7 @@ class TestCircuitBreakerIntegration:
         poller.http_circuit_breaker.failure_threshold = 2
 
         # Simulate HTTP failures
-        mock_http_client.fetch_incidents.side_effect = httpx.TimeoutException("Connection timeout")
+        mock_http_client.fetch_incident_html.side_effect = httpx.TimeoutException("Connection timeout")
 
         # First failure
         result1 = await poller.poll_once()
@@ -97,7 +97,7 @@ class TestCircuitBreakerIntegration:
         result3 = await poller.poll_once()
         assert result3 is False
         # HTTP client should not be called due to open circuit
-        assert mock_http_client.fetch_incidents.call_count == 2
+        assert mock_http_client.fetch_incident_html.call_count == 2
 
     @pytest.mark.asyncio
     async def test_parsing_circuit_breaker_opens_on_failures(self, poller, mock_http_client):
@@ -106,7 +106,7 @@ class TestCircuitBreakerIntegration:
         poller.parsing_circuit_breaker.failure_threshold = 2
 
         # HTTP succeeds but parsing fails
-        mock_http_client.fetch_incidents.return_value = "<invalid>html</invalid>"
+        mock_http_client.fetch_incident_html.return_value = "<invalid>html</invalid>"
 
         with patch.object(poller.parser, 'parse_incidents') as mock_parse:
             mock_parse.side_effect = HTMLParseError("Invalid HTML structure")
@@ -137,7 +137,7 @@ class TestCircuitBreakerIntegration:
         poller.http_circuit_breaker.recovery_timeout = 0.1  # 100ms
 
         # Cause failure to open circuit
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
         result1 = await poller.poll_once()
         assert result1 is False
         assert poller.http_circuit_breaker.state == CircuitState.OPEN
@@ -146,8 +146,8 @@ class TestCircuitBreakerIntegration:
         await asyncio.sleep(0.15)
 
         # Configure success for recovery test
-        mock_http_client.fetch_incidents.side_effect = None
-        mock_http_client.fetch_incidents.return_value = """
+        mock_http_client.fetch_incident_html.side_effect = None
+        mock_http_client.fetch_incident_html.return_value = """
         <table>
             <tr>
                 <td>12/25/2023 2:30:45 PM</td>
@@ -177,7 +177,7 @@ class TestGracefulDegradation:
         mock_cache.get_active_incidents.return_value = [sample_incident]
 
         # Simulate HTTP failure
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
 
         result = await poller.poll_once()
 
@@ -195,7 +195,7 @@ class TestGracefulDegradation:
         mock_cache.get_active_incidents.return_value = [sample_incident]
 
         # HTTP succeeds but parsing fails
-        mock_http_client.fetch_incidents.return_value = "<invalid>html</invalid>"
+        mock_http_client.fetch_incident_html.return_value = "<invalid>html</invalid>"
 
         with patch.object(poller.parser, 'parse_incidents') as mock_parse:
             mock_parse.side_effect = HTMLParseError("Invalid HTML structure")
@@ -216,7 +216,7 @@ class TestGracefulDegradation:
         poller._degraded_mode = True
 
         # Configure successful operation
-        mock_http_client.fetch_incidents.return_value = """
+        mock_http_client.fetch_incident_html.return_value = """
         <table>
             <tr>
                 <td>12/25/2023 2:30:45 PM</td>
@@ -241,7 +241,7 @@ class TestGracefulDegradation:
         mock_cache.get_active_incidents.return_value = []
 
         # Simulate HTTP failure
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
 
         result = await poller.poll_once()
 
@@ -260,7 +260,7 @@ class TestErrorLogging:
         caplog.set_level(logging.DEBUG)
 
         # Test HTTP error logging
-        mock_http_client.fetch_incidents.side_effect = httpx.TimeoutException("Request timeout")
+        mock_http_client.fetch_incident_html.side_effect = httpx.TimeoutException("Request timeout")
 
         await poller.poll_once()
 
@@ -278,7 +278,7 @@ class TestErrorLogging:
         poller.http_circuit_breaker.failure_threshold = 1
 
         # Cause circuit to open
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
         await poller.poll_once()
 
         # Check for circuit breaker logs
@@ -295,7 +295,7 @@ class TestErrorLogging:
         mock_cache.get_active_incidents.return_value = [sample_incident]
 
         # Enter degraded mode
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
         await poller.poll_once()
 
         # Check for degraded mode entry log
@@ -314,7 +314,7 @@ class TestExponentialBackoff:
         poller._max_retry_delay = 0.1
 
         # Simulate persistent failure
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
 
         start_time = asyncio.get_event_loop().time()
 
@@ -389,14 +389,14 @@ class TestErrorRecoveryScenarios:
         mock_cache.get_active_incidents.return_value = [sample_incident]
 
         # Start with HTTP failure
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
         result1 = await poller.poll_once()
         assert result1 is True  # Succeeded with cached data
         assert poller._degraded_mode is True
 
         # HTTP recovers
-        mock_http_client.fetch_incidents.side_effect = None
-        mock_http_client.fetch_incidents.return_value = """
+        mock_http_client.fetch_incident_html.side_effect = None
+        mock_http_client.fetch_incident_html.return_value = """
         <table>
             <tr>
                 <td>12/25/2023 2:30:45 PM</td>
@@ -422,7 +422,7 @@ class TestErrorRecoveryScenarios:
         poller._max_failures = 5
 
         # First: HTTP failures
-        mock_http_client.fetch_incidents.side_effect = httpx.ConnectError("Connection failed")
+        mock_http_client.fetch_incident_html.side_effect = httpx.ConnectError("Connection failed")
 
         await poller.poll_once()  # First HTTP failure
         await poller.poll_once()  # Second HTTP failure - opens HTTP circuit
@@ -430,8 +430,8 @@ class TestErrorRecoveryScenarios:
         assert poller.http_circuit_breaker.state == CircuitState.OPEN
 
         # Second: Even after HTTP recovery, parsing fails
-        mock_http_client.fetch_incidents.side_effect = None
-        mock_http_client.fetch_incidents.return_value = "<invalid>html</invalid>"
+        mock_http_client.fetch_incident_html.side_effect = None
+        mock_http_client.fetch_incident_html.return_value = "<invalid>html</invalid>"
 
         # Reset HTTP circuit breaker to test parsing circuit
         await poller.http_circuit_breaker.reset()
@@ -448,7 +448,7 @@ class TestErrorRecoveryScenarios:
     async def test_cache_update_failure_handling(self, poller, mock_http_client, mock_cache):
         """Test handling of cache update failures."""
         # HTTP and parsing succeed, but cache update fails
-        mock_http_client.fetch_incidents.return_value = """
+        mock_http_client.fetch_incident_html.return_value = """
         <table>
             <tr>
                 <td>12/25/2023 2:30:45 PM</td>

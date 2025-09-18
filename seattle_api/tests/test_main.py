@@ -2,7 +2,7 @@
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, AsyncMock
 
 from seattle_api.main import app
 from seattle_api.config import FastAPIConfig
@@ -17,13 +17,17 @@ def client():
 class TestFastAPIApp:
     """Test cases for FastAPI application."""
     
-    def test_health_check_endpoint(self, client):
+    @patch('seattle_api.main.poller')
+    def test_health_check_endpoint(self, mock_poller, client):
         """Test health check endpoint returns correct response."""
+        # Mock a healthy poller
+        mock_poller.get_health_status.return_value = {"status": "healthy"}
+
         response = client.get("/health")
-        
+
         assert response.status_code == 200
         data = response.json()
-        
+
         assert data["status"] == "healthy"
         assert data["service"] == "seattle-fire-api"
         assert data["version"] == "1.0.0"
@@ -79,24 +83,45 @@ class TestFastAPIApp:
 class TestLifespan:
     """Test cases for application lifespan management."""
     
+    @patch('seattle_api.main.IncidentPoller')
+    @patch('seattle_api.main.SeattleHTTPClient')
+    @patch('seattle_api.main.IncidentCache')
     @patch('seattle_api.main.logger')
     @patch('seattle_api.main.config')
-    def test_lifespan_startup_logging(self, mock_config, mock_logger):
+    def test_lifespan_startup_logging(self, mock_config, mock_logger, mock_cache_cls, mock_http_client_cls, mock_poller_cls):
         """Test that startup events are logged correctly."""
         mock_config.polling_interval_minutes = 5
         mock_config.cache_retention_hours = 24
         mock_config.server_port = 8000
+        mock_config.seattle_endpoint = "http://test.example.com"
+        mock_config.server_host = "localhost"
+        mock_config.log_level = "INFO"
         mock_config.validate = MagicMock()
-        
+
+        # Mock the instances
+        mock_cache = MagicMock()
+        mock_cache.stop_background_cleanup = MagicMock()
+        mock_cache_cls.return_value = mock_cache
+
+        mock_http_client = MagicMock()
+        mock_http_client.start = AsyncMock()
+        mock_http_client.close = AsyncMock()
+        mock_http_client_cls.return_value = mock_http_client
+
+        mock_poller = MagicMock()
+        mock_poller.start_polling = AsyncMock()
+        mock_poller.shutdown = AsyncMock()
+        mock_poller_cls.return_value = mock_poller
+
         # Test client creation triggers lifespan events
         with TestClient(app):
             pass
-        
+
         # Verify startup logging calls
         mock_logger.info.assert_any_call("Starting Seattle Fire Department API service")
         mock_logger.info.assert_any_call("Configuration validation passed")
         mock_logger.info.assert_any_call("Shutting down Seattle Fire Department API service")
-        
+
         # Verify config validation was called
         mock_config.validate.assert_called_once()
     

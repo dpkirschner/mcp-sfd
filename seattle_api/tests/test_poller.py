@@ -29,7 +29,7 @@ def config():
 def mock_http_client():
     """Mock HTTP client."""
     client = MagicMock(spec=SeattleHTTPClient)
-    client.fetch_incidents = AsyncMock()
+    client.fetch_incident_html = AsyncMock()
     return client
 
 
@@ -140,7 +140,7 @@ class TestIncidentPoller:
                                    sample_html, sample_raw_incident, sample_incident):
         """Test successful single polling operation."""
         # Setup mocks
-        mock_http_client.fetch_incidents.return_value = sample_html
+        mock_http_client.fetch_incident_html.return_value = sample_html
 
         with patch.object(poller.parser, 'parse_incidents') as mock_parse, \
              patch.object(poller.normalizer, 'normalize_incident') as mock_normalize, \
@@ -158,7 +158,7 @@ class TestIncidentPoller:
             assert poller._consecutive_failures == 0
             assert poller._last_successful_poll is not None
 
-            mock_http_client.fetch_incidents.assert_called_once()
+            mock_http_client.fetch_incident_html.assert_called_once()
             mock_parse.assert_called_once_with(sample_html)
             mock_normalize.assert_called_once_with(sample_raw_incident)
             mock_update.assert_called_once_with([sample_incident])
@@ -166,7 +166,7 @@ class TestIncidentPoller:
     @pytest.mark.asyncio
     async def test_poll_once_http_failure(self, poller, mock_http_client):
         """Test polling when HTTP client fails."""
-        mock_http_client.fetch_incidents.side_effect = Exception("HTTP Error")
+        mock_http_client.fetch_incident_html.side_effect = Exception("HTTP Error")
 
         result = await poller.poll_once()
 
@@ -179,7 +179,7 @@ class TestIncidentPoller:
     @pytest.mark.asyncio
     async def test_poll_once_parse_failure(self, poller, mock_http_client, sample_html):
         """Test polling when HTML parsing fails."""
-        mock_http_client.fetch_incidents.return_value = sample_html
+        mock_http_client.fetch_incident_html.return_value = sample_html
 
         with patch.object(poller.parser, 'parse_incidents') as mock_parse:
             mock_parse.side_effect = Exception("Parse Error")
@@ -196,7 +196,7 @@ class TestIncidentPoller:
     async def test_poll_once_normalization_failure(self, poller, mock_http_client,
                                                   sample_html, sample_raw_incident):
         """Test polling when incident normalization fails."""
-        mock_http_client.fetch_incidents.return_value = sample_html
+        mock_http_client.fetch_incident_html.return_value = sample_html
 
         with patch.object(poller.parser, 'parse_incidents') as mock_parse, \
              patch.object(poller.normalizer, 'normalize_incident') as mock_normalize, \
@@ -346,7 +346,7 @@ class TestIncidentPoller:
     async def test_max_failures_shutdown(self, poller, mock_http_client):
         """Test that poller shuts down after max consecutive failures."""
         poller._max_failures = 3
-        mock_http_client.fetch_incidents.side_effect = Exception("Persistent Error")
+        mock_http_client.fetch_incident_html.side_effect = Exception("Persistent Error")
 
         # Simulate multiple failed polls
         for _ in range(3):
@@ -376,8 +376,8 @@ class TestIncidentPoller:
     async def test_start_polling_startup_timeout(self, poller, mock_http_client):
         """Test polling startup timeout."""
         # Make poll_once hang to trigger timeout
-        mock_http_client.fetch_incidents = AsyncMock()
-        mock_http_client.fetch_incidents.side_effect = asyncio.sleep(35)  # Longer than 30s timeout
+        mock_http_client.fetch_incident_html = AsyncMock()
+        mock_http_client.fetch_incident_html.side_effect = asyncio.sleep(35)  # Longer than 30s timeout
 
         with pytest.raises(PollingError, match="Poller startup timed out"):
             await poller.start_polling()
@@ -396,7 +396,7 @@ class TestPollingIntegration:
 
         # Mock only the HTTP client since we can't hit real endpoints in tests
         http_client = MagicMock(spec=SeattleHTTPClient)
-        http_client.fetch_incidents = AsyncMock(return_value=sample_html)
+        http_client.fetch_incident_html = AsyncMock(return_value=sample_html)
 
         poller = IncidentPoller(config, http_client, cache)
 
@@ -420,8 +420,8 @@ class TestPollingIntegration:
         http_client = MagicMock(spec=SeattleHTTPClient)
 
         # First call fails, second succeeds
-        http_client.fetch_incidents = AsyncMock()
-        http_client.fetch_incidents.side_effect = [
+        http_client.fetch_incident_html = AsyncMock()
+        http_client.fetch_incident_html.side_effect = [
             Exception("Transient Error"),
             sample_html
         ]

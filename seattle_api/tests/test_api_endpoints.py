@@ -2,12 +2,13 @@
 
 import pytest
 from datetime import datetime, UTC
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
 from seattle_api.main import app
 from seattle_api.models import Incident, IncidentStatus
+from seattle_api.routes.incidents import get_cache
 
 
 @pytest.fixture
@@ -40,12 +41,6 @@ def sample_incidents():
 
 
 @pytest.fixture
-def client():
-    """Test client with real app."""
-    return TestClient(app)
-
-
-@pytest.fixture
 def mock_cache(sample_incidents):
     """Mock cache that returns sample data."""
     cache = MagicMock()
@@ -55,6 +50,15 @@ def mock_cache(sample_incidents):
         (i for i in sample_incidents if i.incident_id == incident_id), None
     )
     return cache
+
+
+@pytest.fixture
+def client(mock_cache):
+    """Test client with mocked cache dependency."""
+    app.dependency_overrides[get_cache] = lambda: mock_cache
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides = {}  # Cleanup
 
 
 def test_health_endpoint(client):
@@ -73,11 +77,8 @@ def test_root_endpoint(client):
     assert "Seattle Fire Department" in data["message"]
 
 
-@patch('seattle_api.main.cache')
-def test_active_incidents(mock_cache_dep, client, sample_incidents):
+def test_active_incidents(client, sample_incidents):
     """Test active incidents endpoint."""
-    mock_cache_dep.get_active_incidents.return_value = sample_incidents
-
     response = client.get("/incidents/active")
     assert response.status_code == 200
 
@@ -87,11 +88,8 @@ def test_active_incidents(mock_cache_dep, client, sample_incidents):
     assert data["data"][0]["incident_id"] == "INC001"
 
 
-@patch('seattle_api.main.cache')
-def test_all_incidents(mock_cache_dep, client, sample_incidents):
+def test_all_incidents(client, sample_incidents):
     """Test all incidents endpoint."""
-    mock_cache_dep.get_all_incidents.return_value = sample_incidents
-
     response = client.get("/incidents/all")
     assert response.status_code == 200
 
@@ -100,11 +98,8 @@ def test_all_incidents(mock_cache_dep, client, sample_incidents):
     assert len(data["data"]) == 2
 
 
-@patch('seattle_api.main.cache')
-def test_specific_incident(mock_cache_dep, client, sample_incidents):
+def test_specific_incident(client, sample_incidents):
     """Test specific incident endpoint."""
-    mock_cache_dep.get_incident.return_value = sample_incidents[0]
-
     response = client.get("/incidents/INC001")
     assert response.status_code == 200
 
@@ -113,22 +108,27 @@ def test_specific_incident(mock_cache_dep, client, sample_incidents):
     assert data["data"]["incident_id"] == "INC001"
 
 
-@patch('seattle_api.main.cache')
-def test_incident_not_found(mock_cache_dep, client):
+def test_incident_not_found(client):
     """Test incident not found."""
-    mock_cache_dep.get_incident.return_value = None
-
     response = client.get("/incidents/NONEXISTENT")
     assert response.status_code == 404
 
 
-@patch('seattle_api.main.cache')
-def test_cache_error(mock_cache_dep, client):
+def test_cache_error():
     """Test cache error handling."""
-    mock_cache_dep.get_active_incidents.side_effect = Exception("Cache error")
+    # Create a special mock that raises an exception
+    error_cache = MagicMock()
+    error_cache.get_active_incidents.side_effect = Exception("Cache error")
 
-    response = client.get("/incidents/active")
-    assert response.status_code == 500
+    # Override dependency for this specific test
+    app.dependency_overrides[get_cache] = lambda: error_cache
+
+    try:
+        with TestClient(app) as test_client:
+            response = test_client.get("/incidents/active")
+            assert response.status_code == 500
+    finally:
+        app.dependency_overrides = {}  # Cleanup
 
 
 def test_pagination_params(client):

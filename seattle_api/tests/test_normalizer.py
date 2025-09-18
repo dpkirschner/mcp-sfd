@@ -40,7 +40,7 @@ class TestIncidentNormalizer:
             assert incident.units == ["E25", "L10"]
             assert incident.address == "515 Minor Ave"
             assert incident.incident_type == "Auto Fire Alarm"
-            assert incident.status == IncidentStatus.ACTIVE
+            assert incident.status == IncidentStatus.ACTIVE.value
             assert incident.first_seen == mock_now
             assert incident.last_seen == mock_now
             assert incident.closed_at is None
