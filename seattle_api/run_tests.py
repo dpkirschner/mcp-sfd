@@ -1,20 +1,19 @@
 #!/usr/bin/env python3
 """Test runner script for Seattle API service."""
 
-import sys
 import subprocess
+import sys
 
 
 def run_tests():
     """Run all tests using pytest."""
     try:
-        result = subprocess.run([
-            sys.executable, "-m", "pytest", 
-            "tests/", 
-            "-v", 
-            "--tb=short"
-        ], cwd=".", capture_output=False)
-        
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "tests/", "-v", "--tb=short"],
+            cwd=".",
+            capture_output=False,
+        )
+
         return result.returncode == 0
     except Exception as e:
         print(f"Error running tests: {e}")

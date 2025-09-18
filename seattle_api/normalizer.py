@@ -3,17 +3,17 @@
 import logging
 import re
 from datetime import datetime
-from typing import List
 
 import pytz
 
-from .models import RawIncident, Incident, IncidentStatus
+from .models import Incident, IncidentStatus, RawIncident
 
 logger = logging.getLogger(__name__)
 
 
 class NormalizationError(Exception):
     """Exception raised when data normalization fails."""
+
     pass
 
 
@@ -22,7 +22,7 @@ class IncidentNormalizer:
 
     def __init__(self):
         """Initialize the normalizer."""
-        self.seattle_tz = pytz.timezone('America/Los_Angeles')
+        self.seattle_tz = pytz.timezone("America/Los_Angeles")
 
     def normalize_incident(self, raw_incident: RawIncident) -> Incident:
         """Normalize a raw incident into a structured Incident.
@@ -59,11 +59,13 @@ class IncidentNormalizer:
                 status=IncidentStatus.ACTIVE,  # New incidents are active
                 first_seen=now,
                 last_seen=now,
-                closed_at=None
+                closed_at=None,
             )
 
         except Exception as e:
-            raise NormalizationError(f"Failed to normalize incident {raw_incident.incident_id}: {e}") from e
+            raise NormalizationError(
+                f"Failed to normalize incident {raw_incident.incident_id}: {e}"
+            ) from e
 
     def _parse_datetime(self, datetime_str: str) -> datetime:
         """Parse datetime string to UTC datetime.
@@ -131,7 +133,7 @@ class IncidentNormalizer:
             cleaned = priority_str.strip()
 
             # Extract first number found
-            match = re.search(r'\d+', cleaned)
+            match = re.search(r"\d+", cleaned)
             if match:
                 return int(match.group())
             else:
@@ -140,7 +142,7 @@ class IncidentNormalizer:
         except (ValueError, AttributeError) as e:
             raise NormalizationError(f"Unable to parse priority: {priority_str}") from e
 
-    def _parse_units(self, units_str: str) -> List[str]:
+    def _parse_units(self, units_str: str) -> list[str]:
         """Parse units string into list of unit identifiers.
 
         Args:
@@ -164,17 +166,17 @@ class IncidentNormalizer:
             units = []
 
             # Split on spaces first
-            parts = re.split(r'\s+', cleaned)
+            parts = re.split(r"\s+", cleaned)
 
             for part in parts:
                 if not part:
                     continue
 
                 # Remove trailing asterisks and other symbols
-                unit = re.sub(r'[*]+$', '', part)
+                unit = re.sub(r"[*]+$", "", part)
 
                 # Further split on other delimiters if needed
-                sub_units = re.split(r'[,;]+', unit)
+                sub_units = re.split(r"[,;]+", unit)
 
                 for sub_unit in sub_units:
                     sub_unit = sub_unit.strip()

@@ -9,18 +9,20 @@ from typing import Any, TypeVar
 
 logger = logging.getLogger(__name__)
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 class CircuitState(Enum):
     """Circuit breaker states."""
-    CLOSED = "closed"      # Normal operation
-    OPEN = "open"         # Circuit is open, blocking calls
+
+    CLOSED = "closed"  # Normal operation
+    OPEN = "open"  # Circuit is open, blocking calls
     HALF_OPEN = "half_open"  # Testing if service is recovered
 
 
 class CircuitBreakerError(Exception):
     """Exception raised when circuit breaker is open."""
+
     pass
 
 
@@ -36,11 +38,13 @@ class CircuitBreaker:
     - HALF_OPEN: Testing if service has recovered
     """
 
-    def __init__(self,
-                 failure_threshold: int = 5,
-                 recovery_timeout: float = 60.0,
-                 expected_exception: type[Exception] = Exception,
-                 name: str = "CircuitBreaker"):
+    def __init__(
+        self,
+        failure_threshold: int = 5,
+        recovery_timeout: float = 60.0,
+        expected_exception: type[Exception] = Exception,
+        name: str = "CircuitBreaker",
+    ):
         """Initialize circuit breaker.
 
         Args:
@@ -120,7 +124,9 @@ class CircuitBreaker:
 
             # If half-open, only allow one request at a time
             if self._state == CircuitState.HALF_OPEN:
-                logger.info(f"Circuit breaker '{self.name}' testing recovery with single request")
+                logger.info(
+                    f"Circuit breaker '{self.name}' testing recovery with single request"
+                )
 
         try:
             # Execute the function
@@ -146,7 +152,9 @@ class CircuitBreaker:
         if self._state == CircuitState.OPEN:
             # Check if enough time has passed to try recovery
             if self._next_attempt_time and datetime.now(UTC) >= self._next_attempt_time:
-                logger.info(f"Circuit breaker '{self.name}' transitioning to half-open for recovery test")
+                logger.info(
+                    f"Circuit breaker '{self.name}' transitioning to half-open for recovery test"
+                )
                 self._state = CircuitState.HALF_OPEN
                 return True
             return False
@@ -163,12 +171,16 @@ class CircuitBreaker:
 
         if self._state == CircuitState.HALF_OPEN:
             # Recovery successful - close circuit
-            logger.info(f"Circuit breaker '{self.name}' recovery successful, closing circuit")
+            logger.info(
+                f"Circuit breaker '{self.name}' recovery successful, closing circuit"
+            )
             self._reset_circuit()
         elif self._state == CircuitState.CLOSED:
             # Normal operation - reset failure count on success
             if self._failure_count > 0:
-                logger.debug(f"Circuit breaker '{self.name}' resetting failure count after success")
+                logger.debug(
+                    f"Circuit breaker '{self.name}' resetting failure count after success"
+                )
                 self._failure_count = 0
 
     async def _on_failure(self, exception: Exception) -> None:
@@ -184,9 +196,14 @@ class CircuitBreaker:
 
         if self._state == CircuitState.HALF_OPEN:
             # Recovery failed - open circuit again
-            logger.warning(f"Circuit breaker '{self.name}' recovery failed, opening circuit")
+            logger.warning(
+                f"Circuit breaker '{self.name}' recovery failed, opening circuit"
+            )
             self._open_circuit()
-        elif self._state == CircuitState.CLOSED and self._failure_count >= self.failure_threshold:
+        elif (
+            self._state == CircuitState.CLOSED
+            and self._failure_count >= self.failure_threshold
+        ):
             # Too many failures - open circuit
             logger.error(
                 f"Circuit breaker '{self.name}' failure threshold reached "
@@ -197,7 +214,9 @@ class CircuitBreaker:
     def _open_circuit(self) -> None:
         """Open the circuit (block all requests)."""
         self._state = CircuitState.OPEN
-        self._next_attempt_time = datetime.now(UTC) + timedelta(seconds=self.recovery_timeout)
+        self._next_attempt_time = datetime.now(UTC) + timedelta(
+            seconds=self.recovery_timeout
+        )
         logger.info(
             f"Circuit breaker '{self.name}' opened, next recovery attempt at "
             f"{self._next_attempt_time.isoformat()}"
@@ -243,8 +262,12 @@ class CircuitBreaker:
             "failed_requests": self._failed_requests,
             "rejected_requests": self._rejected_requests,
             "success_rate_percent": success_rate,
-            "last_failure_time": self._last_failure_time.isoformat() if self._last_failure_time else None,
-            "next_attempt_time": self._next_attempt_time.isoformat() if self._next_attempt_time else None,
+            "last_failure_time": (
+                self._last_failure_time.isoformat() if self._last_failure_time else None
+            ),
+            "next_attempt_time": (
+                self._next_attempt_time.isoformat() if self._next_attempt_time else None
+            ),
         }
 
 
@@ -256,14 +279,19 @@ class HTTPCircuitBreaker(CircuitBreaker):
         # Import here to avoid circular imports
         try:
             import httpx
-            expected_exception = (httpx.HTTPError, asyncio.TimeoutError, ConnectionError)
+
+            expected_exception = (
+                httpx.HTTPError,
+                asyncio.TimeoutError,
+                ConnectionError,
+            )
         except ImportError:
             expected_exception = (asyncio.TimeoutError, ConnectionError)
 
-        kwargs.setdefault('expected_exception', expected_exception)
-        kwargs.setdefault('name', 'HTTPCircuitBreaker')
-        kwargs.setdefault('failure_threshold', 3)  # More sensitive for HTTP
-        kwargs.setdefault('recovery_timeout', 30.0)  # Shorter recovery time
+        kwargs.setdefault("expected_exception", expected_exception)
+        kwargs.setdefault("name", "HTTPCircuitBreaker")
+        kwargs.setdefault("failure_threshold", 3)  # More sensitive for HTTP
+        kwargs.setdefault("recovery_timeout", 30.0)  # Shorter recovery time
 
         super().__init__(**kwargs)
 
@@ -275,9 +303,9 @@ class ParsingCircuitBreaker(CircuitBreaker):
         """Initialize parsing circuit breaker with sensible defaults."""
         from .parser import HTMLParseError
 
-        kwargs.setdefault('expected_exception', (HTMLParseError, ValueError, TypeError))
-        kwargs.setdefault('name', 'ParsingCircuitBreaker')
-        kwargs.setdefault('failure_threshold', 5)  # Less sensitive for parsing
-        kwargs.setdefault('recovery_timeout', 60.0)  # Longer recovery time
+        kwargs.setdefault("expected_exception", (HTMLParseError, ValueError, TypeError))
+        kwargs.setdefault("name", "ParsingCircuitBreaker")
+        kwargs.setdefault("failure_threshold", 5)  # Less sensitive for parsing
+        kwargs.setdefault("recovery_timeout", 60.0)  # Longer recovery time
 
         super().__init__(**kwargs)

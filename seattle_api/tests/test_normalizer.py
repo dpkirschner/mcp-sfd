@@ -1,12 +1,12 @@
 """Tests for data normalizer module."""
 
-import pytest
 from datetime import datetime
 from unittest.mock import patch
-import pytz
 
+import pytest
+
+from seattle_api.models import IncidentStatus, RawIncident
 from seattle_api.normalizer import IncidentNormalizer, NormalizationError
-from seattle_api.models import RawIncident, Incident, IncidentStatus
 
 
 class TestIncidentNormalizer:
@@ -24,10 +24,10 @@ class TestIncidentNormalizer:
             priority_str="1",
             units_str="E25 L10",
             address="515 Minor Ave",
-            incident_type="Auto Fire Alarm"
+            incident_type="Auto Fire Alarm",
         )
 
-        with patch('seattle_api.normalizer.datetime') as mock_datetime:
+        with patch("seattle_api.normalizer.datetime") as mock_datetime:
             mock_now = datetime(2025, 9, 17, 20, 39, 31)
             mock_datetime.utcnow.return_value = mock_now
             # Also need to allow strptime to work normally
@@ -148,7 +148,7 @@ class TestIncidentNormalizer:
             priority_str="1",
             units_str="E25",
             address="515 Minor Ave",
-            incident_type="Auto Fire Alarm"
+            incident_type="Auto Fire Alarm",
         )
 
         with pytest.raises(NormalizationError, match="Failed to normalize incident"):
@@ -162,7 +162,7 @@ class TestIncidentNormalizer:
             priority_str="Invalid",
             units_str="E25",
             address="515 Minor Ave",
-            incident_type="Auto Fire Alarm"
+            incident_type="Auto Fire Alarm",
         )
 
         with pytest.raises(NormalizationError, match="Failed to normalize incident"):
@@ -207,10 +207,10 @@ class TestIncidentNormalizer:
             priority_str="1",
             units_str="E25 L10",
             address="515 Minor Ave Suite 100",
-            incident_type="Auto Fire Alarm - Commercial"
+            incident_type="Auto Fire Alarm - Commercial",
         )
 
-        with patch('seattle_api.normalizer.datetime') as mock_datetime:
+        with patch("seattle_api.normalizer.datetime") as mock_datetime:
             mock_now = datetime(2025, 9, 17, 20, 39, 31)
             mock_datetime.utcnow.return_value = mock_now
             # Also need to allow strptime to work normally

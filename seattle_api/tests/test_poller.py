@@ -1,16 +1,16 @@
 """Tests for the incident poller."""
 
 import asyncio
-import pytest
-from datetime import datetime, timezone, timedelta
-from unittest.mock import AsyncMock, MagicMock, patch, call
-from typing import List
+from datetime import UTC, datetime, timedelta
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from seattle_api.poller import IncidentPoller, PollingError
+import pytest
+
+from seattle_api.cache import IncidentCache
 from seattle_api.config import FastAPIConfig
 from seattle_api.http_client import SeattleHTTPClient
-from seattle_api.cache import IncidentCache
 from seattle_api.models import Incident, IncidentStatus, RawIncident
+from seattle_api.poller import IncidentPoller, PollingError
 
 
 @pytest.fixture
@@ -21,7 +21,7 @@ def config():
         seattle_endpoint="http://test.example.com",
         cache_retention_hours=24,
         server_port=8000,
-        log_level="DEBUG"
+        log_level="DEBUG",
     )
 
 
@@ -69,7 +69,7 @@ def sample_raw_incident():
         priority_str="5",
         units_str="E16*",
         address="123 Main St",
-        incident_type="Aid Response"
+        incident_type="Aid Response",
     )
 
 
@@ -78,14 +78,14 @@ def sample_incident():
     """Sample normalized incident for testing."""
     return Incident(
         incident_id="INC001",
-        incident_datetime=datetime(2023, 12, 25, 22, 30, 45, tzinfo=timezone.utc),
+        incident_datetime=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
         priority=5,
         units=["E16"],
         address="123 Main St",
         incident_type="Aid Response",
         status=IncidentStatus.ACTIVE,
-        first_seen=datetime.now(timezone.utc),
-        last_seen=datetime.now(timezone.utc)
+        first_seen=datetime.now(UTC),
+        last_seen=datetime.now(UTC),
     )
 
 
@@ -136,15 +136,24 @@ class TestIncidentPoller:
         await poller.shutdown()
 
     @pytest.mark.asyncio
-    async def test_poll_once_success(self, poller, mock_http_client, mock_cache,
-                                   sample_html, sample_raw_incident, sample_incident):
+    async def test_poll_once_success(
+        self,
+        poller,
+        mock_http_client,
+        mock_cache,
+        sample_html,
+        sample_raw_incident,
+        sample_incident,
+    ):
         """Test successful single polling operation."""
         # Setup mocks
         mock_http_client.fetch_incident_html.return_value = sample_html
 
-        with patch.object(poller.parser, 'parse_incidents') as mock_parse, \
-             patch.object(poller.normalizer, 'normalize_incident') as mock_normalize, \
-             patch.object(poller, '_update_cache_with_incidents') as mock_update:
+        with (
+            patch.object(poller.parser, "parse_incidents") as mock_parse,
+            patch.object(poller.normalizer, "normalize_incident") as mock_normalize,
+            patch.object(poller, "_update_cache_with_incidents") as mock_update,
+        ):
 
             mock_parse.return_value = [sample_raw_incident]
             mock_normalize.return_value = sample_incident
@@ -181,7 +190,7 @@ class TestIncidentPoller:
         """Test polling when HTML parsing fails."""
         mock_http_client.fetch_incident_html.return_value = sample_html
 
-        with patch.object(poller.parser, 'parse_incidents') as mock_parse:
+        with patch.object(poller.parser, "parse_incidents") as mock_parse:
             mock_parse.side_effect = Exception("Parse Error")
 
             result = await poller.poll_once()
@@ -193,14 +202,17 @@ class TestIncidentPoller:
             assert poller._consecutive_failures >= 0
 
     @pytest.mark.asyncio
-    async def test_poll_once_normalization_failure(self, poller, mock_http_client,
-                                                  sample_html, sample_raw_incident):
+    async def test_poll_once_normalization_failure(
+        self, poller, mock_http_client, sample_html, sample_raw_incident
+    ):
         """Test polling when incident normalization fails."""
         mock_http_client.fetch_incident_html.return_value = sample_html
 
-        with patch.object(poller.parser, 'parse_incidents') as mock_parse, \
-             patch.object(poller.normalizer, 'normalize_incident') as mock_normalize, \
-             patch.object(poller, '_update_cache_with_incidents') as mock_update:
+        with (
+            patch.object(poller.parser, "parse_incidents") as mock_parse,
+            patch.object(poller.normalizer, "normalize_incident") as mock_normalize,
+            patch.object(poller, "_update_cache_with_incidents") as mock_update,
+        ):
 
             mock_parse.return_value = [sample_raw_incident]
             mock_normalize.side_effect = Exception("Normalize Error")
@@ -210,15 +222,19 @@ class TestIncidentPoller:
 
             # Should still succeed even if some incidents fail to normalize
             assert result is True
-            mock_update.assert_called_once_with([])  # Empty list since normalization failed
+            mock_update.assert_called_once_with(
+                []
+            )  # Empty list since normalization failed
 
     @pytest.mark.asyncio
-    async def test_update_cache_with_incidents(self, poller, mock_cache, sample_incident):
+    async def test_update_cache_with_incidents(
+        self, poller, mock_cache, sample_incident
+    ):
         """Test updating cache with new incidents."""
         incidents = [sample_incident]
 
         # Mock executor to run synchronously for testing
-        with patch('asyncio.get_event_loop') as mock_loop:
+        with patch("asyncio.get_event_loop") as mock_loop:
             mock_executor = MagicMock()
             mock_executor.run_in_executor = AsyncMock()
             mock_loop.return_value = mock_executor
@@ -235,13 +251,15 @@ class TestIncidentPoller:
             assert mock_executor.run_in_executor.call_count == 2
 
     @pytest.mark.asyncio
-    async def test_update_cache_closes_missing_incidents(self, poller, mock_cache, sample_incident):
+    async def test_update_cache_closes_missing_incidents(
+        self, poller, mock_cache, sample_incident
+    ):
         """Test that incidents missing from feed are marked as closed."""
         # Setup: cache has an active incident that's not in the current feed
-        existing_incident = sample_incident.model_copy(update={'incident_id': 'OLD001'})
+        existing_incident = sample_incident.model_copy(update={"incident_id": "OLD001"})
         current_incidents = [sample_incident]  # Different incident ID
 
-        with patch('asyncio.get_event_loop') as mock_loop:
+        with patch("asyncio.get_event_loop") as mock_loop:
             mock_executor = MagicMock()
             mock_executor.run_in_executor = AsyncMock()
             mock_loop.return_value = mock_executor
@@ -260,13 +278,13 @@ class TestIncidentPoller:
             assert mock_executor.run_in_executor.call_count >= 3
             # Verify that we tried to get active incidents and add incidents
             calls = mock_executor.run_in_executor.call_args_list
-            assert any('get_active_incidents' in str(call) for call in calls)
-            assert any('add_incident' in str(call) for call in calls)
+            assert any("get_active_incidents" in str(call) for call in calls)
+            assert any("add_incident" in str(call) for call in calls)
 
     def test_get_health_status_healthy(self, poller):
         """Test health status when poller is healthy."""
         poller._is_running = True
-        poller._last_successful_poll = datetime.now(timezone.utc)
+        poller._last_successful_poll = datetime.now(UTC)
         poller._total_polls = 10
         poller._successful_polls = 9
         poller._failed_polls = 1
@@ -302,7 +320,7 @@ class TestIncidentPoller:
     def test_get_health_status_stale(self, poller):
         """Test health status when last poll is too old."""
         poller._is_running = True
-        poller._last_successful_poll = datetime.now(timezone.utc) - timedelta(hours=1)
+        poller._last_successful_poll = datetime.now(UTC) - timedelta(hours=1)
         poller.config.polling_interval_minutes = 5
 
         status = poller.get_health_status()
@@ -366,21 +384,24 @@ class TestIncidentPoller:
         expected_delays = [1.0, 2.0, 4.0, 8.0, 10.0, 10.0]  # Capped at max
 
         for i, expected in enumerate(expected_delays):
-            delay = min(
-                poller._base_retry_delay * (2 ** i),
-                poller._max_retry_delay
-            )
+            delay = min(poller._base_retry_delay * (2**i), poller._max_retry_delay)
             assert delay == expected
 
     @pytest.mark.asyncio
-    async def test_start_polling_startup_timeout(self, config, mock_http_client, mock_cache):
+    async def test_start_polling_startup_timeout(
+        self, config, mock_http_client, mock_cache
+    ):
         """Test polling startup timeout."""
         # Create poller with very short startup timeout for fast testing
-        poller = IncidentPoller(config, mock_http_client, mock_cache, startup_timeout=0.1)
+        poller = IncidentPoller(
+            config, mock_http_client, mock_cache, startup_timeout=0.1
+        )
 
         # Make poll_once hang to trigger timeout
         mock_http_client.fetch_incident_html = AsyncMock()
-        mock_http_client.fetch_incident_html.side_effect = asyncio.sleep(1.0)  # Longer than 0.1s timeout
+        mock_http_client.fetch_incident_html.side_effect = asyncio.sleep(
+            1.0
+        )  # Longer than 0.1s timeout
 
         with pytest.raises(PollingError, match="Poller startup timed out"):
             await poller.start_polling()
@@ -426,7 +447,7 @@ class TestPollingIntegration:
         http_client.fetch_incident_html = AsyncMock()
         http_client.fetch_incident_html.side_effect = [
             Exception("Transient Error"),
-            sample_html
+            sample_html,
         ]
 
         poller = IncidentPoller(config, http_client, cache)

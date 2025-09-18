@@ -1,10 +1,10 @@
 """Tests for incident cache cleanup and retention functionality."""
 
-import pytest
 import asyncio
-import time
 from datetime import datetime, timedelta
 from unittest.mock import Mock, patch
+
+import pytest
 
 from seattle_api.cache import IncidentCache
 from seattle_api.models import Incident, IncidentStatus
@@ -17,7 +17,7 @@ def cache_with_short_retention():
         retention_hours=1,  # 1 hour for testing
         cleanup_interval_minutes=1,  # 1 minute for testing
         max_cache_size=100,
-        memory_warning_threshold=0.5
+        memory_warning_threshold=0.5,
     )
 
 
@@ -35,7 +35,7 @@ def expired_incident():
         status=IncidentStatus.CLOSED.value,
         first_seen=old_time,
         last_seen=old_time - timedelta(minutes=30),
-        closed_at=old_time - timedelta(minutes=30)
+        closed_at=old_time - timedelta(minutes=30),
     )
 
 
@@ -53,7 +53,7 @@ def recent_closed_incident():
         status=IncidentStatus.CLOSED.value,
         first_seen=recent_time,
         last_seen=recent_time - timedelta(minutes=15),
-        closed_at=recent_time - timedelta(minutes=15)
+        closed_at=recent_time - timedelta(minutes=15),
     )
 
 
@@ -70,14 +70,16 @@ def active_incident():
         incident_type="Active Incident",
         status=IncidentStatus.ACTIVE.value,
         first_seen=now,
-        last_seen=now
+        last_seen=now,
     )
 
 
 class TestCleanupRetentionPolicy:
     """Test the 24-hour retention policy for closed incidents."""
 
-    def test_retention_policy_expired_incidents(self, cache_with_short_retention, expired_incident, recent_closed_incident):
+    def test_retention_policy_expired_incidents(
+        self, cache_with_short_retention, expired_incident, recent_closed_incident
+    ):
         """Test that expired incidents are removed but recent ones are kept."""
         cache = cache_with_short_retention
 
@@ -96,7 +98,9 @@ class TestCleanupRetentionPolicy:
         assert len(remaining) == 1
         assert remaining[0].incident_id == "F230000002"
 
-    def test_retention_policy_active_incidents_preserved(self, cache_with_short_retention, expired_incident, active_incident):
+    def test_retention_policy_active_incidents_preserved(
+        self, cache_with_short_retention, expired_incident, active_incident
+    ):
         """Test that active incidents are never removed by retention policy."""
         cache = cache_with_short_retention
 
@@ -111,7 +115,7 @@ class TestCleanupRetentionPolicy:
             incident_type="Old Active Incident",
             status=IncidentStatus.ACTIVE.value,
             first_seen=old_time,
-            last_seen=datetime.utcnow()  # Still being seen
+            last_seen=datetime.utcnow(),  # Still being seen
         )
 
         cache.add_incident(expired_incident)
@@ -143,7 +147,7 @@ class TestCleanupRetentionPolicy:
             status=IncidentStatus.CLOSED.value,
             first_seen=now - timedelta(hours=48),
             last_seen=now - timedelta(hours=47),
-            closed_at=None  # No closed timestamp
+            closed_at=None,  # No closed timestamp
         )
 
         cache_with_short_retention.add_incident(incident_no_closed_at)
@@ -153,7 +157,9 @@ class TestCleanupRetentionPolicy:
         assert removed_count == 0
         assert len(cache_with_short_retention.get_all_incidents()) == 1
 
-    def test_cleanup_statistics_tracking(self, cache_with_short_retention, expired_incident):
+    def test_cleanup_statistics_tracking(
+        self, cache_with_short_retention, expired_incident
+    ):
         """Test that cleanup statistics are properly tracked."""
         cache = cache_with_short_retention
         cache.add_incident(expired_incident)
@@ -168,7 +174,9 @@ class TestCleanupRetentionPolicy:
 
         stats = cache.get_cache_stats()
         assert stats["total_removed"] == removed_count
-        assert stats["last_cleanup"] is None  # Manual cleanup doesn't update last_cleanup
+        assert (
+            stats["last_cleanup"] is None
+        )  # Manual cleanup doesn't update last_cleanup
 
 
 class TestBackgroundCleanupTask:
@@ -197,7 +205,9 @@ class TestBackgroundCleanupTask:
         assert cache._cleanup_task is None
 
     @pytest.mark.asyncio
-    async def test_background_cleanup_removes_expired(self, cache_with_short_retention, expired_incident, recent_closed_incident):
+    async def test_background_cleanup_removes_expired(
+        self, cache_with_short_retention, expired_incident, recent_closed_incident
+    ):
         """Test that background cleanup removes expired incidents."""
         cache = cache_with_short_retention
 
@@ -227,7 +237,9 @@ class TestBackgroundCleanupTask:
         assert stats["last_cleanup"] is not None
 
     @pytest.mark.asyncio
-    async def test_cleanup_callbacks(self, cache_with_short_retention, expired_incident):
+    async def test_cleanup_callbacks(
+        self, cache_with_short_retention, expired_incident
+    ):
         """Test that cleanup callbacks are called correctly."""
         cache = cache_with_short_retention
         cache.add_incident(expired_incident)
@@ -252,7 +264,9 @@ class TestBackgroundCleanupTask:
         assert callback_mock not in cache._cleanup_callbacks
 
     @pytest.mark.asyncio
-    async def test_cleanup_callback_exception_handling(self, cache_with_short_retention):
+    async def test_cleanup_callback_exception_handling(
+        self, cache_with_short_retention
+    ):
         """Test that exceptions in callbacks don't crash the cleanup task."""
         cache = cache_with_short_retention
 
@@ -304,8 +318,8 @@ class TestCacheSizeAndMemoryManagement:
                 incident_type="Test",
                 status=IncidentStatus.CLOSED.value,
                 first_seen=datetime.utcnow() - timedelta(hours=i),
-                last_seen=datetime.utcnow() - timedelta(hours=i-1),
-                closed_at=datetime.utcnow() - timedelta(hours=i-1)
+                last_seen=datetime.utcnow() - timedelta(hours=i - 1),
+                closed_at=datetime.utcnow() - timedelta(hours=i - 1),
             )
             cache.add_incident(incident)
 
@@ -322,7 +336,7 @@ class TestCacheSizeAndMemoryManagement:
         # Add incidents with different closed_at times
         incidents = []
         for i in range(5):
-            closed_time = datetime.utcnow() - timedelta(hours=i+1)
+            closed_time = datetime.utcnow() - timedelta(hours=i + 1)
             incident = Incident(
                 incident_id=f"F23000{i:04d}",
                 incident_datetime=closed_time,
@@ -333,7 +347,7 @@ class TestCacheSizeAndMemoryManagement:
                 status=IncidentStatus.CLOSED.value,
                 first_seen=closed_time,
                 last_seen=closed_time,
-                closed_at=closed_time
+                closed_at=closed_time,
             )
             cache.add_incident(incident)
             incidents.append(incident)
@@ -365,7 +379,7 @@ class TestCacheSizeAndMemoryManagement:
                 incident_type="Test",
                 status=IncidentStatus.ACTIVE.value,
                 first_seen=datetime.utcnow(),
-                last_seen=datetime.utcnow()
+                last_seen=datetime.utcnow(),
             )
             cache.add_incident(incident)
 
@@ -383,7 +397,7 @@ class TestCacheSizeAndMemoryManagement:
         mock_psutil.Process.return_value = mock_process
 
         # Patch the import to return our mock
-        with patch.dict('sys.modules', {'psutil': mock_psutil}):
+        with patch.dict("sys.modules", {"psutil": mock_psutil}):
             cache = IncidentCache(memory_warning_threshold=0.8)
 
             # Add some incidents
@@ -397,7 +411,7 @@ class TestCacheSizeAndMemoryManagement:
                     incident_type="Test",
                     status=IncidentStatus.ACTIVE.value,
                     first_seen=datetime.utcnow(),
-                    last_seen=datetime.utcnow()
+                    last_seen=datetime.utcnow(),
                 )
                 cache.add_incident(incident)
 
@@ -427,12 +441,14 @@ class TestCacheStatistics:
             retention_hours=48,
             cleanup_interval_minutes=30,
             max_cache_size=1000,
-            memory_warning_threshold=0.75
+            memory_warning_threshold=0.75,
         )
 
         # Add some incidents
         for i in range(5):
-            status = IncidentStatus.ACTIVE.value if i < 3 else IncidentStatus.CLOSED.value
+            status = (
+                IncidentStatus.ACTIVE.value if i < 3 else IncidentStatus.CLOSED.value
+            )
             incident = Incident(
                 incident_id=f"F23000{i:04d}",
                 incident_datetime=datetime.utcnow(),
@@ -442,7 +458,7 @@ class TestCacheStatistics:
                 incident_type="Test",
                 status=status,
                 first_seen=datetime.utcnow(),
-                last_seen=datetime.utcnow()
+                last_seen=datetime.utcnow(),
             )
             cache.add_incident(incident)
 
@@ -450,11 +466,20 @@ class TestCacheStatistics:
 
         # Verify all expected fields are present
         expected_fields = [
-            "total_incidents", "active_incidents", "closed_incidents",
-            "retention_hours", "max_cache_size", "cleanup_interval_minutes",
-            "memory_warning_threshold", "cleanup_running", "total_cleanups",
-            "total_removed", "last_cleanup", "memory_warnings",
-            "estimated_memory_mb", "cache_utilization"
+            "total_incidents",
+            "active_incidents",
+            "closed_incidents",
+            "retention_hours",
+            "max_cache_size",
+            "cleanup_interval_minutes",
+            "memory_warning_threshold",
+            "cleanup_running",
+            "total_cleanups",
+            "total_removed",
+            "last_cleanup",
+            "memory_warnings",
+            "estimated_memory_mb",
+            "cache_utilization",
         ]
 
         for field in expected_fields:
@@ -482,7 +507,7 @@ class TestCacheStatistics:
             incident_type="Test",
             status=IncidentStatus.ACTIVE.value,
             first_seen=datetime.utcnow(),
-            last_seen=datetime.utcnow()
+            last_seen=datetime.utcnow(),
         )
         cache.add_incident(incident)
 
@@ -512,7 +537,7 @@ class TestCacheStatistics:
             incident_type="Test",
             status=IncidentStatus.ACTIVE.value,
             first_seen=datetime.utcnow(),
-            last_seen=datetime.utcnow()
+            last_seen=datetime.utcnow(),
         )
         cache.add_incident(incident)
 

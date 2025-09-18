@@ -1,13 +1,13 @@
 """Tests for incident cache operations."""
 
-import pytest
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import List
+
+import pytest
 
 from seattle_api.cache import IncidentCache
-from seattle_api.models import Incident, IncidentStatus, IncidentSearchFilters
+from seattle_api.models import Incident, IncidentSearchFilters, IncidentStatus
 
 
 @pytest.fixture
@@ -29,7 +29,7 @@ def sample_incident():
         incident_type="Aid Response",
         status=IncidentStatus.ACTIVE,
         first_seen=now,
-        last_seen=now
+        last_seen=now,
     )
 
 
@@ -40,44 +40,50 @@ def sample_incidents():
     incidents = []
 
     # Active incident 1
-    incidents.append(Incident(
-        incident_id="F230001234",
-        incident_datetime=base_time,
-        priority=3,
-        units=["E17", "L9"],
-        address="123 Test St",
-        incident_type="Aid Response",
-        status=IncidentStatus.ACTIVE,
-        first_seen=base_time,
-        last_seen=base_time
-    ))
+    incidents.append(
+        Incident(
+            incident_id="F230001234",
+            incident_datetime=base_time,
+            priority=3,
+            units=["E17", "L9"],
+            address="123 Test St",
+            incident_type="Aid Response",
+            status=IncidentStatus.ACTIVE,
+            first_seen=base_time,
+            last_seen=base_time,
+        )
+    )
 
     # Active incident 2
-    incidents.append(Incident(
-        incident_id="F230001235",
-        incident_datetime=base_time - timedelta(minutes=30),
-        priority=1,
-        units=["E22"],
-        address="456 Main Ave",
-        incident_type="Structure Fire",
-        status=IncidentStatus.ACTIVE,
-        first_seen=base_time - timedelta(minutes=30),
-        last_seen=base_time
-    ))
+    incidents.append(
+        Incident(
+            incident_id="F230001235",
+            incident_datetime=base_time - timedelta(minutes=30),
+            priority=1,
+            units=["E22"],
+            address="456 Main Ave",
+            incident_type="Structure Fire",
+            status=IncidentStatus.ACTIVE,
+            first_seen=base_time - timedelta(minutes=30),
+            last_seen=base_time,
+        )
+    )
 
     # Closed incident
-    incidents.append(Incident(
-        incident_id="F230001236",
-        incident_datetime=base_time - timedelta(hours=2),
-        priority=5,
-        units=["M15"],
-        address="789 Oak Blvd",
-        incident_type="Medical Aid",
-        status=IncidentStatus.CLOSED,
-        first_seen=base_time - timedelta(hours=2),
-        last_seen=base_time - timedelta(hours=1),
-        closed_at=base_time - timedelta(hours=1)
-    ))
+    incidents.append(
+        Incident(
+            incident_id="F230001236",
+            incident_datetime=base_time - timedelta(hours=2),
+            priority=5,
+            units=["M15"],
+            address="789 Oak Blvd",
+            incident_type="Medical Aid",
+            status=IncidentStatus.CLOSED,
+            first_seen=base_time - timedelta(hours=2),
+            last_seen=base_time - timedelta(hours=1),
+            closed_at=base_time - timedelta(hours=1),
+        )
+    )
 
     return incidents
 
@@ -110,13 +116,17 @@ class TestIncidentCache:
         # Update the incident with new data
         updated_incident = sample_incident.model_copy()
         updated_incident.address = "Updated Address"
-        updated_incident.first_seen = datetime.utcnow() + timedelta(hours=1)  # Try to change first_seen
+        updated_incident.first_seen = datetime.utcnow() + timedelta(
+            hours=1
+        )  # Try to change first_seen
 
         cache.add_incident(updated_incident)
 
         retrieved = cache.get_incident(sample_incident.incident_id)
         assert retrieved.address == "Updated Address"
-        assert retrieved.first_seen == original_first_seen  # Should preserve original first_seen
+        assert (
+            retrieved.first_seen == original_first_seen
+        )  # Should preserve original first_seen
 
     def test_get_nonexistent_incident(self, cache):
         """Test retrieving a non-existent incident returns None."""
@@ -145,7 +155,10 @@ class TestIncidentCache:
 
         # Check sorting (newest first)
         for i in range(len(all_incidents) - 1):
-            assert all_incidents[i].incident_datetime >= all_incidents[i + 1].incident_datetime
+            assert (
+                all_incidents[i].incident_datetime
+                >= all_incidents[i + 1].incident_datetime
+            )
 
     def test_mark_incident_closed(self, cache, sample_incident):
         """Test marking an incident as closed."""
@@ -241,10 +254,7 @@ class TestIncidentCache:
         for incident in sample_incidents:
             cache.add_incident(incident)
 
-        filters = IncidentSearchFilters(
-            status=IncidentStatus.ACTIVE,
-            priority=3
-        )
+        filters = IncidentSearchFilters(status=IncidentStatus.ACTIVE, priority=3)
         results = cache.search_incidents(filters)
         assert len(results) == 1
         assert results[0].incident_id == "F230001234"
@@ -264,7 +274,7 @@ class TestIncidentCache:
             status=IncidentStatus.CLOSED,
             first_seen=now - timedelta(hours=48),
             last_seen=now - timedelta(hours=25),
-            closed_at=now - timedelta(hours=25)
+            closed_at=now - timedelta(hours=25),
         )
 
         # Create a recent closed incident
@@ -278,7 +288,7 @@ class TestIncidentCache:
             status=IncidentStatus.CLOSED,
             first_seen=now - timedelta(hours=2),
             last_seen=now - timedelta(hours=1),
-            closed_at=now - timedelta(hours=1)
+            closed_at=now - timedelta(hours=1),
         )
 
         cache.add_incident(old_incident)
@@ -335,7 +345,7 @@ class TestIncidentCache:
                         incident_type="Test Incident",
                         status=IncidentStatus.ACTIVE,
                         first_seen=datetime.utcnow(),
-                        last_seen=datetime.utcnow()
+                        last_seen=datetime.utcnow(),
                     )
                     cache.add_incident(incident)
                 results.append(f"Thread {start_id} completed")
@@ -391,7 +401,7 @@ class TestIncidentCache:
                         incident_type="Writer Incident",
                         status=IncidentStatus.ACTIVE,
                         first_seen=datetime.utcnow(),
-                        last_seen=datetime.utcnow()
+                        last_seen=datetime.utcnow(),
                     )
                     cache.add_incident(incident)
                     time.sleep(0.001)

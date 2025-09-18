@@ -7,17 +7,17 @@ clean: format lint typecheck
 # Format code with black
 format:
 	@echo "🎨 Formatting code with black..."
-	black mcp_sfd/ tests/
+	black mcp_sfd/ seattle_api/
 
 # Run linter with auto-fix
 lint:
 	@echo "🔍 Running ruff linter with auto-fix..."
-	ruff check --fix mcp_sfd/ tests/
+	ruff check --fix mcp_sfd/ seattle_api/
 
 # Run type checker in strict mode
 typecheck:
 	@echo "🔬 Running mypy type checker..."
-	mypy mcp_sfd/
+	mypy mcp_sfd/ seattle_api/
 
 # Run tests
 test:

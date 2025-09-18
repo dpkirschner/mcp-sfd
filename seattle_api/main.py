@@ -1,25 +1,23 @@
 """Main FastAPI application entry point."""
 
 import logging
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI
-from fastapi.responses import JSONResponse
 
-from .config import config
+from .api_models import HealthResponse
 from .cache import IncidentCache
+from .config import config
 from .http_client import SeattleHTTPClient
 from .poller import IncidentPoller
 from .routes import incidents_router
 from .routes.incidents import set_cache
-from .api_models import HealthResponse
-
 
 # Configure logging
 logging.basicConfig(
     level=getattr(logging, config.log_level.upper()),
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
@@ -36,9 +34,11 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
     # Startup
     logger.info("Starting Seattle Fire Department API service")
-    logger.info(f"Configuration: polling_interval={config.polling_interval_minutes}min, "
-                f"cache_retention={config.cache_retention_hours}h, "
-                f"port={config.server_port}")
+    logger.info(
+        f"Configuration: polling_interval={config.polling_interval_minutes}min, "
+        f"cache_retention={config.cache_retention_hours}h, "
+        f"port={config.server_port}"
+    )
 
     # Validate configuration on startup
     try:
@@ -52,8 +52,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         # Initialize cache
         cache = IncidentCache(
-            retention_hours=config.cache_retention_hours,
-            cleanup_interval_minutes=15
+            retention_hours=config.cache_retention_hours, cleanup_interval_minutes=15
         )
         logger.info("Incident cache initialized")
 
@@ -113,7 +112,7 @@ app = FastAPI(
     title="Seattle Fire Department Incident API",
     description="API service for Seattle Fire Department live incident data",
     version="1.0.0",
-    lifespan=lifespan
+    lifespan=lifespan,
 )
 
 # Include incident routes
@@ -154,9 +153,9 @@ async def health_check() -> HealthResponse:
             "polling_interval_minutes": config.polling_interval_minutes,
             "cache_retention_hours": config.cache_retention_hours,
             "server_port": config.server_port,
-            "server_host": config.server_host
+            "server_host": config.server_host,
         },
-        poller_status=poller_status
+        poller_status=poller_status,
     )
 
 
@@ -173,24 +172,24 @@ async def root():
             "all_incidents": "/incidents/all",
             "specific_incident": "/incidents/{incident_id}",
             "docs": "/docs",
-            "redoc": "/redoc"
+            "redoc": "/redoc",
         },
         "documentation": {
             "swagger_ui": "/docs",
             "redoc": "/redoc",
-            "openapi_json": "/openapi.json"
-        }
+            "openapi_json": "/openapi.json",
+        },
     }
 
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     logger.info(f"Starting server on {config.server_host}:{config.server_port}")
     uvicorn.run(
         "seattle_api.main:app",
         host=config.server_host,
         port=config.server_port,
         log_level=config.log_level.lower(),
-        reload=False
+        reload=False,
     )

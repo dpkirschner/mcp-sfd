@@ -1,9 +1,9 @@
 """Simple tests for FastAPI incident endpoints."""
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from seattle_api.main import app
@@ -24,7 +24,7 @@ def sample_incidents():
             incident_type="Aid Response",
             status=IncidentStatus.ACTIVE,
             first_seen=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 25, 22, 35, 45, tzinfo=UTC)
+            last_seen=datetime(2023, 12, 25, 22, 35, 45, tzinfo=UTC),
         ),
         Incident(
             incident_id="INC002",
@@ -35,8 +35,8 @@ def sample_incidents():
             incident_type="Structure Fire",
             status=IncidentStatus.ACTIVE,
             first_seen=datetime(2023, 12, 25, 23, 15, 30, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 25, 23, 20, 30, tzinfo=UTC)
-        )
+            last_seen=datetime(2023, 12, 25, 23, 20, 30, tzinfo=UTC),
+        ),
     ]
 
 

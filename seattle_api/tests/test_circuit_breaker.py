@@ -1,20 +1,21 @@
 """Tests for the circuit breaker implementation."""
 
 import asyncio
+
 import pytest
-from datetime import UTC, datetime, timedelta
 
 from seattle_api.circuit_breaker import (
     CircuitBreaker,
     CircuitBreakerError,
     CircuitState,
     HTTPCircuitBreaker,
-    ParsingCircuitBreaker
+    ParsingCircuitBreaker,
 )
 
 
 class TestException(Exception):
     """Test exception for circuit breaker testing."""
+
     pass
 
 
@@ -76,7 +77,7 @@ class TestCircuitBreaker:
         cb = CircuitBreaker(
             failure_threshold=1,
             recovery_timeout=0.1,  # 100ms
-            expected_exception=TestException
+            expected_exception=TestException,
         )
 
         async def initially_failing_then_successful():
@@ -102,9 +103,7 @@ class TestCircuitBreaker:
     async def test_half_open_failed_recovery(self):
         """Test that failed recovery reopens the circuit."""
         cb = CircuitBreaker(
-            failure_threshold=1,
-            recovery_timeout=0.1,
-            expected_exception=TestException
+            failure_threshold=1, recovery_timeout=0.1, expected_exception=TestException
         )
 
         async def always_failing():
@@ -227,6 +226,7 @@ class TestHTTPCircuitBreaker:
     async def test_http_circuit_breaker_with_httpx_error(self):
         """Test HTTP circuit breaker handles httpx errors."""
         import httpx
+
         cb = HTTPCircuitBreaker(failure_threshold=1)
 
         async def http_timeout():
@@ -254,6 +254,7 @@ class TestParsingCircuitBreaker:
     async def test_parsing_circuit_breaker_with_parse_error(self):
         """Test parsing circuit breaker handles parse errors."""
         from seattle_api.parser import HTMLParseError
+
         cb = ParsingCircuitBreaker(failure_threshold=1)
 
         async def parsing_failure():

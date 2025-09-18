@@ -2,11 +2,9 @@
 
 import logging
 import re
-from datetime import datetime
-from typing import List, Optional
 
-from bs4 import BeautifulSoup, Tag
 import pytz
+from bs4 import BeautifulSoup, Tag
 
 from .models import RawIncident
 
@@ -15,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 class HTMLParseError(Exception):
     """Exception raised when HTML parsing fails."""
+
     pass
 
 
@@ -23,9 +22,9 @@ class IncidentHTMLParser:
 
     def __init__(self):
         """Initialize the HTML parser."""
-        self.seattle_tz = pytz.timezone('America/Los_Angeles')
+        self.seattle_tz = pytz.timezone("America/Los_Angeles")
 
-    def parse_incidents(self, html_content: str) -> List[RawIncident]:
+    def parse_incidents(self, html_content: str) -> list[RawIncident]:
         """Parse incidents from HTML content.
 
         Args:
@@ -41,7 +40,7 @@ class IncidentHTMLParser:
             raise HTMLParseError("Empty HTML content provided")
 
         try:
-            soup = BeautifulSoup(html_content, 'html.parser')
+            soup = BeautifulSoup(html_content, "html.parser")
         except Exception as e:
             raise HTMLParseError(f"Failed to parse HTML: {e}") from e
 
@@ -71,19 +70,25 @@ class IncidentHTMLParser:
                 logger.warning(f"Failed to parse incident row {i + 1}: {e}")
                 # Log the row content for debugging (but limit length)
                 try:
-                    row_text = row.get_text()[:200] + "..." if len(row.get_text()) > 200 else row.get_text()
+                    row_text = (
+                        row.get_text()[:200] + "..."
+                        if len(row.get_text()) > 200
+                        else row.get_text()
+                    )
                     logger.debug(f"Problematic row content: {row_text}")
-                except:
+                except Exception:
                     logger.debug("Could not extract row content for debugging")
                 continue
 
         if failed_rows > 0:
             logger.warning(f"Failed to parse {failed_rows} out of {len(rows)} rows")
 
-        logger.info(f"Successfully parsed {len(incidents)} incidents from {len(rows)} rows")
+        logger.info(
+            f"Successfully parsed {len(incidents)} incidents from {len(rows)} rows"
+        )
         return incidents
 
-    def _find_incident_table(self, soup: BeautifulSoup) -> Optional[Tag]:
+    def _find_incident_table(self, soup: BeautifulSoup) -> Tag | None:
         """Find the table containing incident data.
 
         Args:
@@ -93,15 +98,15 @@ class IncidentHTMLParser:
             Table element or None if not found
         """
         # Look for tables with incident data
-        tables = soup.find_all('table')
+        tables = soup.find_all("table")
 
         for table in tables:
             # Check if table contains incident-like rows
-            rows = table.find_all('tr')
+            rows = table.find_all("tr")
             if len(rows) >= 1:  # At least one row
                 # Look for rows with the expected structure
                 for row in rows:
-                    cells = row.find_all('td')
+                    cells = row.find_all("td")
                     if len(cells) >= 6:  # Expected number of columns
                         # Check if first cell looks like a datetime
                         first_cell = cells[0].get_text(strip=True)
@@ -110,7 +115,7 @@ class IncidentHTMLParser:
 
         return None
 
-    def _find_incident_rows(self, table: Tag) -> List[Tag]:
+    def _find_incident_rows(self, table: Tag) -> list[Tag]:
         """Find incident data rows in the table.
 
         Args:
@@ -119,15 +124,15 @@ class IncidentHTMLParser:
         Returns:
             List of row elements containing incident data
         """
-        rows = table.find_all('tr')
+        rows = table.find_all("tr")
         incident_rows = []
 
         for row in rows:
             # Skip header rows and empty rows
-            if not row.find_all('td'):
+            if not row.find_all("td"):
                 continue
 
-            cells = row.find_all('td')
+            cells = row.find_all("td")
             if len(cells) >= 6:  # Expected number of columns
                 # Check if first cell looks like a datetime
                 first_cell = cells[0].get_text(strip=True)
@@ -136,7 +141,7 @@ class IncidentHTMLParser:
 
         return incident_rows
 
-    def _parse_incident_row(self, row: Tag) -> Optional[RawIncident]:
+    def _parse_incident_row(self, row: Tag) -> RawIncident | None:
         """Parse a single incident row.
 
         Args:
@@ -145,7 +150,7 @@ class IncidentHTMLParser:
         Returns:
             RawIncident object or None if parsing fails
         """
-        cells = row.find_all('td')
+        cells = row.find_all("td")
         if len(cells) < 6:
             logger.warning(f"Incident row has only {len(cells)} cells, expected 6")
             return None
@@ -176,7 +181,7 @@ class IncidentHTMLParser:
                 priority_str=priority_str,
                 units_str=units_str,
                 address=address,
-                incident_type=incident_type
+                incident_type=incident_type,
             )
 
         except Exception as e:
@@ -197,7 +202,7 @@ class IncidentHTMLParser:
 
         # Look for common datetime patterns
         # M/D/YYYY H:MM:SS AM/PM
-        datetime_pattern = r'\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M'
+        datetime_pattern = r"\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}:\d{2}\s+[AP]M"
         return bool(re.search(datetime_pattern, text))
 
     def _clean_datetime_string(self, datetime_str: str) -> str:
@@ -210,7 +215,7 @@ class IncidentHTMLParser:
             Cleaned datetime string
         """
         # Remove extra whitespace and normalize
-        cleaned = re.sub(r'\s+', ' ', datetime_str.strip())
+        cleaned = re.sub(r"\s+", " ", datetime_str.strip())
         return cleaned
 
     def _clean_units_string(self, units_str: str) -> str:
@@ -223,7 +228,7 @@ class IncidentHTMLParser:
             Cleaned units string
         """
         # Remove extra whitespace
-        cleaned = re.sub(r'\s+', ' ', units_str.strip())
+        cleaned = re.sub(r"\s+", " ", units_str.strip())
         return cleaned
 
     def _clean_address_string(self, address: str) -> str:
@@ -236,7 +241,7 @@ class IncidentHTMLParser:
             Cleaned address string
         """
         # Remove extra whitespace and normalize
-        cleaned = re.sub(r'\s+', ' ', address.strip())
+        cleaned = re.sub(r"\s+", " ", address.strip())
         return cleaned
 
     def _clean_incident_type_string(self, incident_type: str) -> str:
@@ -249,5 +254,5 @@ class IncidentHTMLParser:
             Cleaned incident type string
         """
         # Remove extra whitespace
-        cleaned = re.sub(r'\s+', ' ', incident_type.strip())
+        cleaned = re.sub(r"\s+", " ", incident_type.strip())
         return cleaned

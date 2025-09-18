@@ -1,11 +1,10 @@
 """Tests for HTML parser module."""
 
-import pytest
-from datetime import datetime
 from unittest.mock import patch
 
-from seattle_api.parser import IncidentHTMLParser, HTMLParseError
-from seattle_api.models import RawIncident
+import pytest
+
+from seattle_api.parser import HTMLParseError, IncidentHTMLParser
 
 
 class TestIncidentHTMLParser:
@@ -303,7 +302,7 @@ class TestIncidentHTMLParser:
         # BeautifulSoup should handle HTML entities
         assert "E25" in incident.units_str and "L10" in incident.units_str
 
-    @patch('seattle_api.parser.logger')
+    @patch("seattle_api.parser.logger")
     def test_parse_incidents_logs_failures(self, mock_logger):
         """Test that parsing failures are properly logged."""
         html = """

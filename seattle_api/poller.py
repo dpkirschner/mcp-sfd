@@ -9,7 +9,11 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .cache import IncidentCache
-from .circuit_breaker import CircuitBreakerError, HTTPCircuitBreaker, ParsingCircuitBreaker
+from .circuit_breaker import (
+    CircuitBreakerError,
+    HTTPCircuitBreaker,
+    ParsingCircuitBreaker,
+)
 from .config import FastAPIConfig
 from .http_client import SeattleHTTPClient
 from .models import Incident, IncidentStatus
@@ -21,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 class PollingError(Exception):
     """Exception raised during polling operations."""
+
     pass
 
 
@@ -36,11 +41,13 @@ class IncidentPoller:
     - Health monitoring and metrics
     """
 
-    def __init__(self,
-                 config: FastAPIConfig,
-                 http_client: SeattleHTTPClient,
-                 cache: IncidentCache,
-                 startup_timeout: float = 30.0):
+    def __init__(
+        self,
+        config: FastAPIConfig,
+        http_client: SeattleHTTPClient,
+        cache: IncidentCache,
+        startup_timeout: float = 30.0,
+    ):
         """Initialize the incident poller.
 
         Args:
@@ -58,14 +65,10 @@ class IncidentPoller:
 
         # Circuit breakers for resilience
         self.http_circuit_breaker = HTTPCircuitBreaker(
-            failure_threshold=3,
-            recovery_timeout=30.0,
-            name="HTTPCircuitBreaker"
+            failure_threshold=3, recovery_timeout=30.0, name="HTTPCircuitBreaker"
         )
         self.parsing_circuit_breaker = ParsingCircuitBreaker(
-            failure_threshold=5,
-            recovery_timeout=60.0,
-            name="ParsingCircuitBreaker"
+            failure_threshold=5, recovery_timeout=60.0, name="ParsingCircuitBreaker"
         )
 
         # Polling state
@@ -95,6 +98,7 @@ class IncidentPoller:
 
     def _setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
+
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, initiating graceful shutdown...")
             asyncio.create_task(self.shutdown())
@@ -117,7 +121,9 @@ class IncidentPoller:
         if self._is_running:
             raise PollingError("Polling is already running")
 
-        logger.info(f"Starting incident poller with {self.config.polling_interval_minutes}min interval")
+        logger.info(
+            f"Starting incident poller with {self.config.polling_interval_minutes}min interval"
+        )
 
         try:
             # Reset shutdown event
@@ -130,7 +136,9 @@ class IncidentPoller:
 
             # Wait for startup to complete or fail
             try:
-                await asyncio.wait_for(self._startup_complete.wait(), timeout=self._startup_timeout)
+                await asyncio.wait_for(
+                    self._startup_complete.wait(), timeout=self._startup_timeout
+                )
                 logger.info("Incident poller started successfully")
             except TimeoutError:
                 logger.error("Poller startup timed out")
@@ -222,6 +230,7 @@ class IncidentPoller:
             # Try to parse incidents through parsing circuit breaker
             incidents = []
             try:
+
                 async def parse_wrapper():
                     return self.parser.parse_incidents(html_content)
 
@@ -237,11 +246,15 @@ class IncidentPoller:
                         incidents.append(incident)
                     except Exception as e:
                         normalization_errors += 1
-                        logger.warning(f"Failed to normalize incident {raw_incident.incident_id}: {e}")
+                        logger.warning(
+                            f"Failed to normalize incident {raw_incident.incident_id}: {e}"
+                        )
                         continue
 
                 if normalization_errors > 0:
-                    logger.warning(f"Failed to normalize {normalization_errors} out of {len(raw_incidents)} incidents")
+                    logger.warning(
+                        f"Failed to normalize {normalization_errors} out of {len(raw_incidents)} incidents"
+                    )
 
                 logger.info(f"Successfully normalized {len(incidents)} incidents")
 
@@ -261,7 +274,9 @@ class IncidentPoller:
                 # Cache update failure is not fatal, continue
 
             # Update success metrics
-            await self._record_polling_success(start_time, successful_operations, total_operations)
+            await self._record_polling_success(
+                start_time, successful_operations, total_operations
+            )
 
             return True
 
@@ -273,12 +288,16 @@ class IncidentPoller:
 
             # Check if we've exceeded max failures
             if self._consecutive_failures >= self._max_failures:
-                logger.critical(f"Max consecutive failures ({self._max_failures}) reached, stopping poller")
+                logger.critical(
+                    f"Max consecutive failures ({self._max_failures}) reached, stopping poller"
+                )
                 await self.shutdown()
 
             return False
 
-    async def _handle_degraded_operation(self, operation_type: str, error: Exception | None = None) -> bool:
+    async def _handle_degraded_operation(
+        self, operation_type: str, error: Exception | None = None
+    ) -> bool:
         """Handle degraded operation by serving from cache.
 
         Args:
@@ -301,7 +320,9 @@ class IncidentPoller:
             elif operation_type.startswith("parsing"):
                 logger.error(f"Parsing operation failed, serving from cache: {error}")
             else:
-                logger.error(f"Operation {operation_type} failed, serving from cache: {error}")
+                logger.error(
+                    f"Operation {operation_type} failed, serving from cache: {error}"
+                )
         else:
             logger.info(f"Circuit breaker blocked {operation_type}, serving from cache")
 
@@ -312,7 +333,9 @@ class IncidentPoller:
             )
 
             if cached_incidents:
-                logger.info(f"Serving {len(cached_incidents)} incidents from cache (degraded mode)")
+                logger.info(
+                    f"Serving {len(cached_incidents)} incidents from cache (degraded mode)"
+                )
                 # Update last seen times for cached incidents to keep them fresh
                 for incident in cached_incidents:
                     incident.last_seen = datetime.now(UTC)
@@ -334,7 +357,9 @@ class IncidentPoller:
             self._failed_polls += 1
             return False
 
-    async def _record_polling_success(self, start_time: datetime, successful_ops: int, total_ops: int) -> None:
+    async def _record_polling_success(
+        self, start_time: datetime, successful_ops: int, total_ops: int
+    ) -> None:
         """Record successful polling operation and update metrics.
 
         Args:
@@ -359,7 +384,9 @@ class IncidentPoller:
         if success_rate == 100:
             logger.debug(f"Polling cycle completed successfully in {duration:.2f}s")
         else:
-            logger.info(f"Polling cycle completed with {success_rate:.1f}% success rate in {duration:.2f}s")
+            logger.info(
+                f"Polling cycle completed with {success_rate:.1f}% success rate in {duration:.2f}s"
+            )
 
     async def _update_cache_with_incidents(self, incidents: list[Incident]) -> None:
         """Update cache with new incidents and handle status changes.
@@ -390,13 +417,18 @@ class IncidentPoller:
                 existing_incident = await asyncio.get_event_loop().run_in_executor(
                     None, self.cache.get_incident, incident_id
                 )
-                if existing_incident and existing_incident.status == IncidentStatus.ACTIVE:
+                if (
+                    existing_incident
+                    and existing_incident.status == IncidentStatus.ACTIVE
+                ):
                     # Create a closed version of the incident
-                    closed_incident = existing_incident.model_copy(update={
-                        'status': IncidentStatus.CLOSED,
-                        'closed_at': datetime.now(UTC),
-                        'last_seen': datetime.now(UTC)
-                    })
+                    closed_incident = existing_incident.model_copy(
+                        update={
+                            "status": IncidentStatus.CLOSED,
+                            "closed_at": datetime.now(UTC),
+                            "last_seen": datetime.now(UTC),
+                        }
+                    )
                     await asyncio.get_event_loop().run_in_executor(
                         None, self.cache.add_incident, closed_incident
                     )
@@ -426,8 +458,7 @@ class IncidentPoller:
                     # Wait for either shutdown or next poll time
                     try:
                         await asyncio.wait_for(
-                            self._shutdown_event.wait(),
-                            timeout=interval_seconds
+                            self._shutdown_event.wait(), timeout=interval_seconds
                         )
                         # Shutdown was requested
                         break
@@ -442,15 +473,17 @@ class IncidentPoller:
                         # If polling failed, apply exponential backoff
                         if not success and self._consecutive_failures > 0:
                             delay = min(
-                                self._base_retry_delay * (2 ** (self._consecutive_failures - 1)),
-                                self._max_retry_delay
+                                self._base_retry_delay
+                                * (2 ** (self._consecutive_failures - 1)),
+                                self._max_retry_delay,
                             )
-                            logger.warning(f"Polling failed, waiting {delay:.1f}s before retry")
+                            logger.warning(
+                                f"Polling failed, waiting {delay:.1f}s before retry"
+                            )
 
                             try:
                                 await asyncio.wait_for(
-                                    self._shutdown_event.wait(),
-                                    timeout=delay
+                                    self._shutdown_event.wait(), timeout=delay
                                 )
                                 break  # Shutdown was requested during backoff
                             except TimeoutError:
@@ -465,13 +498,13 @@ class IncidentPoller:
 
                     # Apply backoff for unexpected errors too
                     delay = min(
-                        self._base_retry_delay * (2 ** (self._consecutive_failures - 1)),
-                        self._max_retry_delay
+                        self._base_retry_delay
+                        * (2 ** (self._consecutive_failures - 1)),
+                        self._max_retry_delay,
                     )
                     try:
                         await asyncio.wait_for(
-                            self._shutdown_event.wait(),
-                            timeout=delay
+                            self._shutdown_event.wait(), timeout=delay
                         )
                         break
                     except TimeoutError:
@@ -497,7 +530,9 @@ class IncidentPoller:
 
         old_interval = self.config.polling_interval_minutes
         self.config.polling_interval_minutes = minutes
-        logger.info(f"Polling interval changed from {old_interval} to {minutes} minutes")
+        logger.info(
+            f"Polling interval changed from {old_interval} to {minutes} minutes"
+        )
 
     def get_health_status(self) -> dict:
         """Get current health and status information.
@@ -523,7 +558,9 @@ class IncidentPoller:
             status = "degraded"
         elif self._consecutive_failures >= self._max_failures:
             status = "unhealthy"
-        elif time_since_last_poll and time_since_last_poll > (self.config.polling_interval_minutes * 60 * 2):
+        elif time_since_last_poll and time_since_last_poll > (
+            self.config.polling_interval_minutes * 60 * 2
+        ):
             status = "stale"
 
         return {
@@ -535,12 +572,16 @@ class IncidentPoller:
             "successful_polls": self._successful_polls,
             "failed_polls": self._failed_polls,
             "consecutive_failures": self._consecutive_failures,
-            "last_successful_poll": self._last_successful_poll.isoformat() if self._last_successful_poll else None,
+            "last_successful_poll": (
+                self._last_successful_poll.isoformat()
+                if self._last_successful_poll
+                else None
+            ),
             "time_since_last_poll_seconds": time_since_last_poll,
             "circuit_breakers": {
                 "http": self.http_circuit_breaker.get_statistics(),
-                "parsing": self.parsing_circuit_breaker.get_statistics()
-            }
+                "parsing": self.parsing_circuit_breaker.get_statistics(),
+            },
         }
 
     @property
@@ -552,4 +593,3 @@ class IncidentPoller:
     def startup_complete(self) -> bool:
         """Check if startup has completed successfully."""
         return self._startup_complete.is_set()
-

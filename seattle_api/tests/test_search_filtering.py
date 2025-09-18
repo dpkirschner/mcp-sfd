@@ -1,9 +1,9 @@
 """Tests for incident search filtering functionality."""
 
-import pytest
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
+import pytest
 from fastapi.testclient import TestClient
 
 from seattle_api.main import app
@@ -24,7 +24,7 @@ def comprehensive_incidents():
             incident_type="Structure Fire",
             status=IncidentStatus.ACTIVE,
             first_seen=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 25, 22, 35, 45, tzinfo=UTC)
+            last_seen=datetime(2023, 12, 25, 22, 35, 45, tzinfo=UTC),
         ),
         Incident(
             incident_id="MED001",
@@ -35,7 +35,7 @@ def comprehensive_incidents():
             incident_type="Aid Response",
             status=IncidentStatus.ACTIVE,
             first_seen=datetime(2023, 12, 25, 23, 15, 30, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 25, 23, 20, 30, tzinfo=UTC)
+            last_seen=datetime(2023, 12, 25, 23, 20, 30, tzinfo=UTC),
         ),
         Incident(
             incident_id="FIRE002",
@@ -47,7 +47,7 @@ def comprehensive_incidents():
             status=IncidentStatus.CLOSED,
             first_seen=datetime(2023, 12, 25, 20, 45, 15, tzinfo=UTC),
             last_seen=datetime(2023, 12, 25, 21, 15, 15, tzinfo=UTC),
-            closed_at=datetime(2023, 12, 25, 21, 15, 15, tzinfo=UTC)
+            closed_at=datetime(2023, 12, 25, 21, 15, 15, tzinfo=UTC),
         ),
         Incident(
             incident_id="ALARM001",
@@ -58,7 +58,7 @@ def comprehensive_incidents():
             incident_type="Alarm Response",
             status=IncidentStatus.ACTIVE,
             first_seen=datetime(2023, 12, 26, 8, 30, 0, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 26, 8, 45, 0, tzinfo=UTC)
+            last_seen=datetime(2023, 12, 26, 8, 45, 0, tzinfo=UTC),
         ),
         Incident(
             incident_id="RESCUE001",
@@ -70,8 +70,8 @@ def comprehensive_incidents():
             status=IncidentStatus.CLOSED,
             first_seen=datetime(2023, 12, 24, 14, 20, 0, tzinfo=UTC),
             last_seen=datetime(2023, 12, 24, 15, 30, 0, tzinfo=UTC),
-            closed_at=datetime(2023, 12, 24, 15, 30, 0, tzinfo=UTC)
-        )
+            closed_at=datetime(2023, 12, 24, 15, 30, 0, tzinfo=UTC),
+        ),
     ]
 
 
@@ -206,7 +206,9 @@ class TestSearchEndpoint:
         since_time = "2023-12-25T22:00:00Z"
         until_time = "2023-12-25T23:30:00Z"
 
-        response = client.get(f"/incidents/search?since={since_time}&until={until_time}")
+        response = client.get(
+            f"/incidents/search?since={since_time}&until={until_time}"
+        )
         assert response.status_code == 200
 
         data = response.json()
@@ -215,9 +217,15 @@ class TestSearchEndpoint:
 
         # Verify datetime filtering worked
         for incident in data["data"]:
-            incident_time = datetime.fromisoformat(incident["incident_datetime"].replace('Z', '+00:00'))
-            assert incident_time >= datetime.fromisoformat(since_time.replace('Z', '+00:00'))
-            assert incident_time <= datetime.fromisoformat(until_time.replace('Z', '+00:00'))
+            incident_time = datetime.fromisoformat(
+                incident["incident_datetime"].replace("Z", "+00:00")
+            )
+            assert incident_time >= datetime.fromisoformat(
+                since_time.replace("Z", "+00:00")
+            )
+            assert incident_time <= datetime.fromisoformat(
+                until_time.replace("Z", "+00:00")
+            )
 
     def test_search_combined_filters(self, client, comprehensive_incidents):
         """Test combining multiple filters."""
@@ -260,7 +268,9 @@ class TestSearchEndpoint:
 
     def test_search_invalid_datetime_range(self, client):
         """Test search with invalid datetime range."""
-        response = client.get("/incidents/search?since=2023-12-25T23:00:00Z&until=2023-12-25T22:00:00Z")
+        response = client.get(
+            "/incidents/search?since=2023-12-25T23:00:00Z&until=2023-12-25T22:00:00Z"
+        )
         assert response.status_code == 400
         assert "since" in response.json()["detail"]
         assert "until" in response.json()["detail"]
@@ -341,8 +351,14 @@ class TestSearchFilterHelpers:
 
         # Test status filter - count active incidents
         # Note: Due to use_enum_values=True, status is stored as string
-        active_incidents = [i for i in comprehensive_incidents if i.status == IncidentStatus.ACTIVE.value]
-        result = _apply_search_filters(comprehensive_incidents, status_filter=IncidentStatus.ACTIVE)
+        active_incidents = [
+            i
+            for i in comprehensive_incidents
+            if i.status == IncidentStatus.ACTIVE.value
+        ]
+        result = _apply_search_filters(
+            comprehensive_incidents, status_filter=IncidentStatus.ACTIVE
+        )
         assert len(result) == len(active_incidents)
 
         # Test incident type filter
@@ -360,23 +376,25 @@ class TestSearchFilterHelpers:
         # Combine general query with specific filters
         # Find fire incidents that are active
         # Note: Due to use_enum_values=True, status is stored as string
-        fire_active_count = len([
-            i for i in comprehensive_incidents
-            if "fire" in i.incident_type.lower() and i.status == IncidentStatus.ACTIVE.value
-        ])
+        fire_active_count = len(
+            [
+                i
+                for i in comprehensive_incidents
+                if "fire" in i.incident_type.lower()
+                and i.status == IncidentStatus.ACTIVE.value
+            ]
+        )
 
         result = _apply_search_filters(
             comprehensive_incidents,
             general_query="fire",
-            status_filter=IncidentStatus.ACTIVE
+            status_filter=IncidentStatus.ACTIVE,
         )
         assert len(result) == fire_active_count
 
         # Combine multiple specific filters
         result = _apply_search_filters(
-            comprehensive_incidents,
-            incident_type="fire",
-            address="seattle"
+            comprehensive_incidents, incident_type="fire", address="seattle"
         )
         assert len(result) == 2  # Both fire incidents are in Seattle
 
