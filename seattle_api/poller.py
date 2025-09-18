@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from .cache import IncidentCache
+from .circuit_breaker import CircuitBreakerError, HTTPCircuitBreaker, ParsingCircuitBreaker
 from .config import FastAPIConfig
 from .http_client import SeattleHTTPClient
 from .models import Incident, IncidentStatus
@@ -52,17 +53,30 @@ class IncidentPoller:
         self.parser = IncidentHTMLParser()
         self.normalizer = IncidentNormalizer()
 
+        # Circuit breakers for resilience
+        self.http_circuit_breaker = HTTPCircuitBreaker(
+            failure_threshold=3,
+            recovery_timeout=30.0,
+            name="HTTPCircuitBreaker"
+        )
+        self.parsing_circuit_breaker = ParsingCircuitBreaker(
+            failure_threshold=5,
+            recovery_timeout=60.0,
+            name="ParsingCircuitBreaker"
+        )
+
         # Polling state
         self._polling_task: asyncio.Task | None = None
         self._is_running = False
         self._shutdown_event = asyncio.Event()
         self._startup_complete = asyncio.Event()
 
-        # Error handling
+        # Enhanced error handling
         self._consecutive_failures = 0
-        self._max_failures = 5
+        self._max_failures = 10  # Increased since we have circuit breakers
         self._base_retry_delay = 1.0  # seconds
         self._max_retry_delay = 300.0  # 5 minutes
+        self._degraded_mode = False  # Flag for graceful degradation
 
         # Health metrics
         self._last_successful_poll: datetime | None = None
@@ -172,53 +186,87 @@ class IncidentPoller:
         self._shutdown_callbacks.discard(callback)
 
     async def poll_once(self) -> bool:
-        """Perform a single polling operation.
+        """Perform a single polling operation with circuit breaker protection.
 
         Returns:
             bool: True if polling was successful, False otherwise
         """
         start_time = datetime.now(UTC)
         self._total_polls += 1
+        successful_operations = 0
+        total_operations = 2  # HTTP fetch + parsing
 
         try:
             logger.debug("Starting incident polling cycle")
 
-            # Fetch HTML content
-            html_content = await self.http_client.fetch_incidents()
+            # Try to fetch HTML content through HTTP circuit breaker
+            html_content = None
+            try:
+                html_content = await self.http_circuit_breaker.call(
+                    lambda: self.http_client.fetch_incidents()
+                )
+                successful_operations += 1
+                logger.debug("HTTP fetch completed successfully")
+            except CircuitBreakerError as e:
+                logger.warning(f"HTTP circuit breaker blocked request: {e}")
+                return await self._handle_degraded_operation("http_circuit_open")
+            except Exception as e:
+                logger.error(f"HTTP fetch failed: {e}")
+                self._failed_polls += 1
+                self._consecutive_failures += 1
+                return await self._handle_degraded_operation("http_error", error=e)
 
-            # Parse incidents from HTML
-            raw_incidents = self.parser.parse_incidents(html_content)
-            logger.debug(f"Parsed {len(raw_incidents)} raw incidents from HTML")
-
-            # Normalize incidents
+            # Try to parse incidents through parsing circuit breaker
             incidents = []
-            for raw_incident in raw_incidents:
-                try:
-                    incident = self.normalizer.normalize_incident(raw_incident)
-                    incidents.append(incident)
-                except Exception as e:
-                    logger.warning(f"Failed to normalize incident {raw_incident.incident_id}: {e}")
-                    continue
+            try:
+                async def parse_wrapper():
+                    return self.parser.parse_incidents(html_content)
 
-            logger.info(f"Normalized {len(incidents)} incidents")
+                raw_incidents = await self.parsing_circuit_breaker.call(parse_wrapper)
+                successful_operations += 1
+                logger.debug(f"Parsed {len(raw_incidents)} raw incidents from HTML")
+
+                # Normalize incidents (with individual error handling)
+                normalization_errors = 0
+                for raw_incident in raw_incidents:
+                    try:
+                        incident = self.normalizer.normalize_incident(raw_incident)
+                        incidents.append(incident)
+                    except Exception as e:
+                        normalization_errors += 1
+                        logger.warning(f"Failed to normalize incident {raw_incident.incident_id}: {e}")
+                        continue
+
+                if normalization_errors > 0:
+                    logger.warning(f"Failed to normalize {normalization_errors} out of {len(raw_incidents)} incidents")
+
+                logger.info(f"Successfully normalized {len(incidents)} incidents")
+
+            except CircuitBreakerError as e:
+                logger.warning(f"Parsing circuit breaker blocked request: {e}")
+                return await self._handle_degraded_operation("parsing_circuit_open")
+            except Exception as e:
+                logger.error(f"Parsing failed: {e}")
+                return await self._handle_degraded_operation("parsing_error", error=e)
 
             # Update cache with new incidents
-            await self._update_cache_with_incidents(incidents)
+            try:
+                await self._update_cache_with_incidents(incidents)
+                logger.debug("Cache updated successfully")
+            except Exception as e:
+                logger.error(f"Failed to update cache: {e}")
+                # Cache update failure is not fatal, continue
 
             # Update success metrics
-            self._last_successful_poll = datetime.now(UTC)
-            self._successful_polls += 1
-            self._consecutive_failures = 0
-
-            duration = (datetime.now(UTC) - start_time).total_seconds()
-            logger.debug(f"Polling cycle completed successfully in {duration:.2f}s")
+            await self._record_polling_success(start_time, successful_operations, total_operations)
 
             return True
 
         except Exception as e:
+            # Unexpected error
+            logger.error(f"Unexpected error in polling cycle: {e}", exc_info=True)
             self._failed_polls += 1
             self._consecutive_failures += 1
-            logger.error(f"Polling cycle failed: {e}")
 
             # Check if we've exceeded max failures
             if self._consecutive_failures >= self._max_failures:
@@ -226,6 +274,89 @@ class IncidentPoller:
                 await self.shutdown()
 
             return False
+
+    async def _handle_degraded_operation(self, operation_type: str, error: Exception | None = None) -> bool:
+        """Handle degraded operation by serving from cache.
+
+        Args:
+            operation_type: Type of operation that failed
+            error: Optional error that caused the degradation
+
+        Returns:
+            bool: True if degraded operation succeeded, False otherwise
+        """
+        was_degraded = self._degraded_mode
+        self._degraded_mode = True
+
+        if not was_degraded:
+            logger.warning(f"Entering degraded mode due to {operation_type}")
+
+        # Log the specific error with appropriate detail level
+        if error:
+            if operation_type.startswith("http"):
+                logger.error(f"HTTP operation failed, serving from cache: {error}")
+            elif operation_type.startswith("parsing"):
+                logger.error(f"Parsing operation failed, serving from cache: {error}")
+            else:
+                logger.error(f"Operation {operation_type} failed, serving from cache: {error}")
+        else:
+            logger.info(f"Circuit breaker blocked {operation_type}, serving from cache")
+
+        try:
+            # Get current active incidents from cache
+            cached_incidents = await asyncio.get_event_loop().run_in_executor(
+                None, self.cache.get_active_incidents
+            )
+
+            if cached_incidents:
+                logger.info(f"Serving {len(cached_incidents)} incidents from cache (degraded mode)")
+                # Update last seen times for cached incidents to keep them fresh
+                for incident in cached_incidents:
+                    incident.last_seen = datetime.now(UTC)
+                    await asyncio.get_event_loop().run_in_executor(
+                        None, self.cache.add_incident, incident
+                    )
+
+                # Partial success in degraded mode
+                self._failed_polls += 1  # Still count as a failed poll
+                logger.debug("Degraded operation completed with cached data")
+                return True
+            else:
+                logger.warning("No cached incidents available for degraded mode")
+                self._failed_polls += 1
+                return False
+
+        except Exception as e:
+            logger.error(f"Failed to serve from cache in degraded mode: {e}")
+            self._failed_polls += 1
+            return False
+
+    async def _record_polling_success(self, start_time: datetime, successful_ops: int, total_ops: int) -> None:
+        """Record successful polling operation and update metrics.
+
+        Args:
+            start_time: When the polling cycle started
+            successful_ops: Number of successful operations
+            total_ops: Total number of operations attempted
+        """
+        # Exit degraded mode on successful poll
+        if self._degraded_mode:
+            self._degraded_mode = False
+            logger.info("Exiting degraded mode after successful poll")
+
+        # Update success metrics
+        self._last_successful_poll = datetime.now(UTC)
+        self._successful_polls += 1
+        self._consecutive_failures = 0
+
+        # Calculate and log performance metrics
+        duration = (datetime.now(UTC) - start_time).total_seconds()
+        success_rate = (successful_ops / total_ops) * 100
+
+        if success_rate == 100:
+            logger.debug(f"Polling cycle completed successfully in {duration:.2f}s")
+        else:
+            logger.info(f"Polling cycle completed with {success_rate:.1f}% success rate in {duration:.2f}s")
 
     async def _update_cache_with_incidents(self, incidents: list[Incident]) -> None:
         """Update cache with new incidents and handle status changes.
@@ -381,6 +512,10 @@ class IncidentPoller:
         status = "healthy"
         if not self._is_running:
             status = "stopped"
+        elif self.http_circuit_breaker.is_open or self.parsing_circuit_breaker.is_open:
+            status = "circuit_open"
+        elif self._degraded_mode:
+            status = "degraded"
         elif self._consecutive_failures > 0:
             status = "degraded"
         elif self._consecutive_failures >= self._max_failures:
@@ -391,6 +526,7 @@ class IncidentPoller:
         return {
             "status": status,
             "is_running": self._is_running,
+            "degraded_mode": self._degraded_mode,
             "polling_interval_minutes": self.config.polling_interval_minutes,
             "total_polls": self._total_polls,
             "successful_polls": self._successful_polls,
@@ -398,6 +534,10 @@ class IncidentPoller:
             "consecutive_failures": self._consecutive_failures,
             "last_successful_poll": self._last_successful_poll.isoformat() if self._last_successful_poll else None,
             "time_since_last_poll_seconds": time_since_last_poll,
+            "circuit_breakers": {
+                "http": self.http_circuit_breaker.get_statistics(),
+                "parsing": self.parsing_circuit_breaker.get_statistics()
+            }
         }
 
     @property
