@@ -39,19 +39,22 @@ class IncidentPoller:
     def __init__(self,
                  config: FastAPIConfig,
                  http_client: SeattleHTTPClient,
-                 cache: IncidentCache):
+                 cache: IncidentCache,
+                 startup_timeout: float = 30.0):
         """Initialize the incident poller.
 
         Args:
             config: Configuration containing polling settings
             http_client: HTTP client for fetching incident data
             cache: Cache for storing processed incidents
+            startup_timeout: Timeout in seconds for startup completion (default: 30.0)
         """
         self.config = config
         self.http_client = http_client
         self.cache = cache
         self.parser = IncidentHTMLParser()
         self.normalizer = IncidentNormalizer()
+        self._startup_timeout = startup_timeout
 
         # Circuit breakers for resilience
         self.http_circuit_breaker = HTTPCircuitBreaker(
@@ -127,7 +130,7 @@ class IncidentPoller:
 
             # Wait for startup to complete or fail
             try:
-                await asyncio.wait_for(self._startup_complete.wait(), timeout=30.0)
+                await asyncio.wait_for(self._startup_complete.wait(), timeout=self._startup_timeout)
                 logger.info("Incident poller started successfully")
             except TimeoutError:
                 logger.error("Poller startup timed out")

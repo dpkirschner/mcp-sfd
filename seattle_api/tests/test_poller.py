@@ -373,11 +373,14 @@ class TestIncidentPoller:
             assert delay == expected
 
     @pytest.mark.asyncio
-    async def test_start_polling_startup_timeout(self, poller, mock_http_client):
+    async def test_start_polling_startup_timeout(self, config, mock_http_client, mock_cache):
         """Test polling startup timeout."""
+        # Create poller with very short startup timeout for fast testing
+        poller = IncidentPoller(config, mock_http_client, mock_cache, startup_timeout=0.1)
+
         # Make poll_once hang to trigger timeout
         mock_http_client.fetch_incident_html = AsyncMock()
-        mock_http_client.fetch_incident_html.side_effect = asyncio.sleep(35)  # Longer than 30s timeout
+        mock_http_client.fetch_incident_html.side_effect = asyncio.sleep(1.0)  # Longer than 0.1s timeout
 
         with pytest.raises(PollingError, match="Poller startup timed out"):
             await poller.start_polling()
