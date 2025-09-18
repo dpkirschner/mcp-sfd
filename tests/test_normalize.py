@@ -1,57 +1,50 @@
 """
 Tests for data normalization functions.
 
-This module tests the complex data transformation logic that converts
-upstream API responses into our standardized format.
+This module tests the data transformation logic that converts
+Socrata API responses into our standardized format.
 """
 
-import json
 from datetime import datetime
-from pathlib import Path
 
-import pytest
 import pytz
 
 from mcp_sfd.normalize import (
-    flatten_data_array,
+    estimate_incident_active,
     normalize_full_response,
     normalize_incident,
     normalize_response_meta,
-    parse_boolean,
     parse_coordinate,
     parse_datetime,
-    parse_unit_status,
-    parse_units,
+    parse_report_location,
 )
-from mcp_sfd.schemas import Incident, UnitStatus
+from mcp_sfd.schemas import Incident, ReportLocation
 
 
 class TestParseDatetime:
-    """Test datetime parsing with timezone conversion."""
+    """Test datetime parsing for Socrata ISO format."""
 
-    def test_parse_datetime_standard_format(self):
-        """Test parsing standard datetime format from API."""
-        dt_str = "2025-09-15 16:05:27"
+    def test_parse_datetime_iso_format(self):
+        """Test parsing ISO datetime format from Socrata API."""
+        dt_str = "2025-09-15T22:58:00.000"
         result = parse_datetime(dt_str)
 
         # Should be converted to UTC
         assert result.tzinfo == pytz.UTC
-        # Should represent the correct time (PDT is UTC-7 in September)
-        assert result.hour == 23  # 16 + 7 = 23 UTC
+
+    def test_parse_datetime_with_z_suffix(self):
+        """Test parsing ISO format with Z suffix."""
+        dt_str = "2025-09-15T22:58:00.000Z"
+        result = parse_datetime(dt_str)
+
+        assert isinstance(result, datetime)
+        assert result.tzinfo == pytz.UTC
 
     def test_parse_datetime_invalid_format(self):
         """Test handling of invalid datetime format."""
         result = parse_datetime("invalid-date")
 
         # Should return current time as fallback
-        assert isinstance(result, datetime)
-        assert result.tzinfo == pytz.UTC
-
-    def test_parse_datetime_iso_fallback(self):
-        """Test fallback to ISO format parsing."""
-        dt_str = "2025-09-15T16:05:27Z"
-        result = parse_datetime(dt_str)
-
         assert isinstance(result, datetime)
         assert result.tzinfo == pytz.UTC
 
@@ -67,40 +60,26 @@ class TestParseDatetime:
         assert isinstance(result, datetime)
         assert result.tzinfo == pytz.UTC
 
-        # Test whitespace-only string
-        result = parse_datetime("   ")
-        assert isinstance(result, datetime)
-        assert result.tzinfo == pytz.UTC
+    def test_parse_datetime_legacy_format_fallback(self):
+        """Test fallback to legacy SFD format parsing."""
+        dt_str = "2025-09-15 16:05:27"
+        result = parse_datetime(dt_str)
 
-        # Test null string
-        result = parse_datetime("null")
         assert isinstance(result, datetime)
         assert result.tzinfo == pytz.UTC
 
 
 class TestParseCoordinate:
-    """Test coordinate parsing from various formats."""
+    """Test coordinate parsing from Socrata string format."""
+
+    def test_parse_coordinate_string(self):
+        """Test parsing string coordinate from Socrata."""
+        result = parse_coordinate("47.6062")
+        assert result == 47.6062
 
     def test_parse_coordinate_float(self):
         """Test parsing float coordinate."""
         result = parse_coordinate(47.6062)
-        assert result == 47.6062
-
-    def test_parse_coordinate_string(self):
-        """Test parsing string coordinate."""
-        result = parse_coordinate("47.6062")
-        assert result == 47.6062
-
-    def test_parse_coordinate_dict_with_parsed_value(self):
-        """Test parsing dict format with parsedValue."""
-        coord_dict = {"source": "address", "parsedValue": 47.6062}
-        result = parse_coordinate(coord_dict)
-        assert result == 47.6062
-
-    def test_parse_coordinate_dict_alternative_keys(self):
-        """Test parsing dict with alternative keys."""
-        coord_dict = {"latitude": 47.6062}
-        result = parse_coordinate(coord_dict)
         assert result == 47.6062
 
     def test_parse_coordinate_none(self):
@@ -114,186 +93,137 @@ class TestParseCoordinate:
         assert result is None
 
 
-class TestParseUnits:
-    """Test unit string parsing."""
+class TestParseReportLocation:
+    """Test report location parsing from Socrata format."""
 
-    def test_parse_units_with_markers(self):
-        """Test parsing units with trailing markers."""
-        result = parse_units("E16*, L15, E32")
-        assert result == ["E16", "L15", "E32"]
+    def test_parse_report_location_complete(self):
+        """Test parsing complete report location."""
+        location_data = {"type": "Point", "coordinates": [-122.336484, 47.611672]}
 
-    def test_parse_units_comma_separated(self):
-        """Test parsing comma-separated units."""
-        result = parse_units("E16,L15,E32")
-        assert result == ["E16", "L15", "E32"]
+        result = parse_report_location(location_data)
+        assert isinstance(result, ReportLocation)
+        assert result.type == "Point"
+        assert result.coordinates == [-122.336484, 47.611672]
 
-    def test_parse_units_mixed_separators(self):
-        """Test parsing with mixed separators."""
-        result = parse_units("E16* L15,E32")
-        assert result == ["E16", "L15", "E32"]
+    def test_parse_report_location_none(self):
+        """Test parsing None location."""
+        result = parse_report_location(None)
+        assert result is None
 
-    def test_parse_units_empty(self):
-        """Test parsing empty string."""
-        result = parse_units("")
-        assert result == []
-
-    def test_parse_units_none_value(self):
-        """Test parsing None value."""
-        result = parse_units("None")
-        assert result == []
+    def test_parse_report_location_invalid(self):
+        """Test parsing invalid location."""
+        result = parse_report_location("invalid")
+        assert result is None
 
 
-class TestParseBoolean:
-    """Test boolean parsing from various formats."""
+class TestEstimateIncidentActive:
+    """Test incident activity estimation."""
 
-    def test_parse_boolean_integer(self):
-        """Test parsing integer booleans."""
-        assert parse_boolean(1) is True
-        assert parse_boolean(0) is False
+    def test_estimate_incident_active_recent(self):
+        """Test that recent incidents are considered active."""
+        # Create a recent datetime (5 minutes ago)
+        recent_time = datetime.now(pytz.UTC)
+        result = estimate_incident_active(recent_time)
+        assert result is True
 
-    def test_parse_boolean_string(self):
-        """Test parsing string booleans."""
-        assert parse_boolean("true") is True
-        assert parse_boolean("false") is False
-        assert parse_boolean("1") is True
-        assert parse_boolean("0") is False
+    def test_estimate_incident_active_old(self):
+        """Test that old incidents are not considered active."""
+        # Create an old datetime (2 hours ago)
+        import datetime as dt
 
-    def test_parse_boolean_actual_boolean(self):
-        """Test parsing actual boolean values."""
-        assert parse_boolean(True) is True
-        assert parse_boolean(False) is False
-
-
-class TestParseUnitStatus:
-    """Test unit status parsing."""
-
-    def test_parse_unit_status_complete(self):
-        """Test parsing complete unit status."""
-        status_data = {
-            "E16": {
-                "dispatched": "2025-09-15 16:05:30",
-                "arrived": "2025-09-15 16:08:15",
-                "transport": None,
-                "in_service": None,
-            }
-        }
-
-        result = parse_unit_status(status_data)
-        assert "E16" in result
-        assert isinstance(result["E16"], UnitStatus)
-        assert result["E16"].dispatched == "2025-09-15 16:05:30"
-        assert result["E16"].arrived == "2025-09-15 16:08:15"
-
-    def test_parse_unit_status_empty(self):
-        """Test parsing empty unit status."""
-        result = parse_unit_status({})
-        assert result == {}
-
-    def test_parse_unit_status_invalid(self):
-        """Test parsing invalid unit status."""
-        result = parse_unit_status("invalid")
-        assert result == {}
-
-
-class TestFlattenDataArray:
-    """Test flattening of upstream data array format."""
-
-    def test_flatten_data_array_standard(self):
-        """Test flattening standard format."""
-        data = [{"0": {"id": 1, "type": "Fire"}}, {"1": {"id": 2, "type": "Medical"}}]
-
-        result = flatten_data_array(data)
-        assert len(result) == 2
-        assert result[0]["id"] == 1
-        assert result[1]["id"] == 2
-
-    def test_flatten_data_array_alternative_keys(self):
-        """Test flattening with alternative keys."""
-        data = [{"incident": {"id": 1, "type": "Fire"}}]
-
-        result = flatten_data_array(data)
-        assert len(result) == 1
-        assert result[0]["id"] == 1
-
-    def test_flatten_data_array_empty(self):
-        """Test flattening empty array."""
-        result = flatten_data_array([])
-        assert result == []
+        old_time = datetime.now(pytz.UTC) - dt.timedelta(hours=2)
+        result = estimate_incident_active(old_time)
+        assert result is False
 
 
 class TestNormalizeIncident:
-    """Test complete incident normalization."""
+    """Test complete incident normalization for Socrata data."""
 
     def test_normalize_incident_complete(self):
-        """Test normalizing a complete incident."""
+        """Test normalizing a complete Socrata incident."""
         raw_incident = {
-            "id": 12345,
-            "incident_number": "F250915-001",
-            "type": "Fire in Building",
-            "type_code": "FIR",
-            "description": "STRUCTURE FIRE - COMMERCIAL BUILDING",
-            "datetime": "2025-09-15 16:05:27",
-            "latitude": 47.6062,
-            "longitude": -122.3321,
-            "address": "123 Main St, Seattle, WA",
-            "units_dispatched": "E16*, L15",
-            "active": 1,
-            "late": 0,
-            "unit_status": {
-                "E16": {
-                    "dispatched": "2025-09-15 16:05:30",
-                    "arrived": "2025-09-15 16:08:15",
-                    "transport": None,
-                    "in_service": None,
-                }
+            "incident_number": "F250128483",
+            "type": "Auto Fire Alarm",
+            "address": "1601 5th Ave",
+            "datetime": "2025-09-15T22:58:00.000",
+            "latitude": "47.611672",
+            "longitude": "-122.336484",
+            "report_location": {
+                "type": "Point",
+                "coordinates": [-122.336484, 47.611672],
             },
+            ":@computed_region_ru88_fbhk": "14",
+            ":@computed_region_kuhn_3gp2": "31",
+            ":@computed_region_q256_3sug": "18081",
         }
 
         result = normalize_incident(raw_incident)
 
         assert isinstance(result, Incident)
-        assert result.id == 12345
-        assert result.incident_number == "F250915-001"
-        assert result.type == "Fire in Building"
-        assert result.units == ["E16", "L15"]
-        assert result.active is True
-        assert result.late is False
-        assert result.latitude == 47.6062
-        assert result.longitude == -122.3321
+        assert result.incident_number == "F250128483"
+        assert result.type == "Auto Fire Alarm"
+        assert result.address == "1601 5th Ave"
+        assert result.latitude == 47.611672
+        assert result.longitude == -122.336484
+        assert result.computed_region_ru88_fbhk == "14"
+        assert isinstance(result.estimated_active, bool)
+        assert result.raw == raw_incident
 
     def test_normalize_incident_minimal(self):
-        """Test normalizing minimal incident data."""
+        """Test normalizing minimal Socrata incident data."""
         raw_incident = {
-            "id": 1,
             "incident_number": "TEST-001",
             "type": "Test",
-            "description": "Test incident",
-            "datetime": "2025-09-15 12:00:00",
             "address": "Test Address",
+            "datetime": "2025-09-15T12:00:00.000",
         }
 
         result = normalize_incident(raw_incident)
 
         assert isinstance(result, Incident)
-        assert result.id == 1
-        assert result.units == []
-        assert result.active is False
+        assert result.incident_number == "TEST-001"
+        assert result.type == "Test"
+        assert result.address == "Test Address"
+        assert result.latitude is None
+        assert result.longitude is None
 
 
-class TestFullNormalization:
-    """Test complete response normalization using example data."""
+class TestSocrataFullNormalization:
+    """Test complete response normalization for Socrata format."""
 
-    @pytest.fixture
-    def example_response(self):
-        """Load example response data."""
-        example_path = Path(__file__).parent / "data" / "example_payload.json"
-        with open(example_path) as f:
-            return json.load(f)
+    def test_normalize_full_response_socrata(self):
+        """Test complete Socrata response normalization."""
+        # Create sample Socrata incident data
+        raw_incidents = [
+            {
+                "incident_number": "F250128483",
+                "type": "Auto Fire Alarm",
+                "address": "1601 5th Ave",
+                "datetime": "2025-09-15T22:58:00.000",
+                "latitude": "47.611672",
+                "longitude": "-122.336484",
+                "report_location": {
+                    "type": "Point",
+                    "coordinates": [-122.336484, 47.611672],
+                },
+            },
+            {
+                "incident_number": "M250128484",
+                "type": "Medical Aid",
+                "address": "456 Pine St",
+                "datetime": "2025-09-15T22:30:00.000",
+                "latitude": "47.612345",
+                "longitude": "-122.345678",
+            },
+        ]
 
-    def test_normalize_full_response(self, example_response):
-        """Test complete response normalization."""
+        query_params = {"$order": "datetime DESC", "$limit": 2, "$offset": 0}
+
         result = normalize_full_response(
-            example_response, "https://test.example.com", False
+            raw_incidents,
+            "https://data.seattle.gov/resource/kzjm-xkqj.json",
+            False,
+            query_params,
         )
 
         # Check structure
@@ -303,30 +233,31 @@ class TestFullNormalization:
 
         # Check meta
         meta = result["meta"]
-        assert meta["page"] == 1
-        assert meta["results_per_page"] == 100
-        assert meta["order"] == "new"
+        assert meta["results_returned"] == 2
+        assert meta["order"] == "new"  # DESC converted to "new"
+        assert meta["limit"] == 2
 
         # Check incidents
         incidents = result["incidents"]
-        assert len(incidents) == 4
+        assert len(incidents) == 2
 
-        # Check first incident (fire)
-        fire_incident = incidents[0]
-        assert fire_incident["type"] == "Fire in Building"
-        assert fire_incident["active"] is True
-        assert fire_incident["units"] == ["E16", "L15", "E32"]
+        # Check first incident
+        first_incident = incidents[0]
+        assert first_incident["incident_number"] == "F250128483"
+        assert first_incident["type"] == "Auto Fire Alarm"
 
         # Check source
         source = result["source"]
-        assert source["url"] == "https://test.example.com"
+        assert "data.seattle.gov" in source["url"]
         assert source["cache_hit"] is False
 
-    def test_normalize_response_meta(self, example_response):
-        """Test response metadata normalization."""
-        result = normalize_response_meta(example_response)
+    def test_normalize_response_meta_socrata(self):
+        """Test response metadata normalization for Socrata."""
+        query_params = {"$order": "datetime ASC", "$limit": 50, "$offset": 10}
 
-        assert result.page == 1
-        assert result.results_per_page == 100
-        assert result.order == "new"
-        assert result.total_incidents == 156
+        result = normalize_response_meta(25, query_params)
+
+        assert result.results_returned == 25
+        assert result.order == "old"  # ASC converted to "old"
+        assert result.limit == 50
+        assert result.offset == 10

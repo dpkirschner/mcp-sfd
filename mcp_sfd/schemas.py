@@ -2,7 +2,7 @@
 Pydantic schemas for SFD MCP server.
 
 This module defines all the data models used for validating input and output
-of the MCP tools that interact with Seattle Fire Department incident data.
+of the MCP tools that interact with Seattle Fire Department data via Socrata API.
 """
 
 from datetime import datetime
@@ -11,52 +11,43 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 
-class UnitStatus(BaseModel):
-    """Status timestamps for emergency response units."""
+class ReportLocation(BaseModel):
+    """Geospatial point for incident location."""
 
-    dispatched: str | None = None
-    arrived: str | None = None
-    transport: str | None = None
-    in_service: str | None = None
+    type: str = "Point"
+    coordinates: list[float] = Field(default_factory=list)  # [longitude, latitude]
 
 
 class Incident(BaseModel):
-    """A single emergency incident from the SFD live feed."""
+    """A single emergency incident from the Seattle Socrata API."""
 
-    id: int
     incident_number: str
     type: str
-    type_code: str | None = None
-    description: str
-    description_clean: str | None = None
-    response_type: str | None = None
-    response_mode: str | None = None
+    address: str
     datetime_local: datetime
     datetime_utc: datetime
     latitude: float | None = None
     longitude: float | None = None
-    address: str
-    area: str | None = None
-    battalion: str | None = None
-    units: list[str] = Field(default_factory=list)
-    primary_unit: str | None = None
-    unit_status: dict[str, UnitStatus] = Field(default_factory=dict)
-    active: bool = False
-    alarm: int | None = None
-    late: bool = False
+    report_location: ReportLocation | None = None
+
+    # Computed region fields from Socrata
+    computed_region_ru88_fbhk: str | None = None
+    computed_region_kuhn_3gp2: str | None = None
+    computed_region_q256_3sug: str | None = None
+
+    # Derived fields for compatibility
+    estimated_active: bool = False  # Based on time heuristics
     raw: dict[str, Any] | None = None  # Preserve original data for debugging
 
 
 class ResponseMeta(BaseModel):
-    """Metadata about the API response."""
+    """Metadata about the Socrata API response."""
 
-    page: int
-    total_pages: int | None = None
-    results_per_page: int
-    total_incidents: int | None = None
-    offset: int | None = None
+    results_returned: int
     order: str
-    users_online: int | None = None
+    limit: int
+    offset: int = 0
+    query_params: dict[str, Any] = Field(default_factory=dict)
 
 
 class ResponseSource(BaseModel):
@@ -84,15 +75,17 @@ class FetchRawInput(BaseModel):
     order: str = Field(default="new", pattern="^(new|old)$")
     start: int = Field(default=0, ge=0)
     length: int = Field(default=100, ge=1, le=500)
-    search: str = "Any"
+    search: str = "Any"  # Free text search
     page: int = Field(default=1, ge=1)
-    location: str = "Any"
-    unit: str = "Any"
-    type: str = "Any"
-    area: str = "Any"
-    date: str = "Today"
-    dateEnd: str = "Today"
+    location: str = "Any"  # Address filter
+    type: str = "Any"  # Incident type filter
+    area: str = "Any"  # Not directly supported in Socrata
+    date: str = "Today"  # Start date
+    dateEnd: str = "Today"  # End date
     cacheTtlSeconds: int = Field(default=15, ge=0)
+
+    # Legacy parameters kept for compatibility but ignored
+    unit: str = "Any"  # Units not available in Socrata data
 
 
 class LatestIncidentInput(BaseModel):
@@ -145,15 +138,11 @@ class ActiveIncidentsInput(BaseModel):
 class ActiveIncidentSummary(BaseModel):
     """Lightweight incident summary for active incidents tool."""
 
-    id: int
     incident_number: str
     type: str
-    description: str
     time: str  # Local time formatted as "6:55 PM"
     address: str
-    area: str | None = None
-    units: list[str] = Field(default_factory=list)
-    active: bool = True
+    estimated_active: bool = True
 
 
 class ActiveIncidentsResponse(BaseModel):

@@ -5,9 +5,7 @@ This module tests each tool's logic using mocked HTTP responses
 to ensure correct behavior without requiring real API calls.
 """
 
-import json
 from datetime import datetime, timedelta
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -21,11 +19,30 @@ from mcp_sfd.tools.latest_incident import latest_incident
 
 
 @pytest.fixture
-def example_response():
-    """Load example response data."""
-    example_path = Path(__file__).parent / "data" / "example_payload.json"
-    with open(example_path) as f:
-        return json.load(f)
+def example_socrata_response():
+    """Create example Socrata response data."""
+    return [
+        {
+            "incident_number": "F250128483",
+            "type": "Auto Fire Alarm",
+            "address": "1601 5th Ave",
+            "datetime": "2025-09-15T22:58:00.000",
+            "latitude": "47.611672",
+            "longitude": "-122.336484",
+            "report_location": {
+                "type": "Point",
+                "coordinates": [-122.336484, 47.611672],
+            },
+        },
+        {
+            "incident_number": "M250128484",
+            "type": "Medical Aid",
+            "address": "456 Pine St",
+            "datetime": "2025-09-15T22:30:00.000",
+            "latitude": "47.612345",
+            "longitude": "-122.345678",
+        },
+    ]
 
 
 @pytest.fixture
@@ -34,7 +51,7 @@ def mock_http_client():
     with patch("mcp_sfd.tools.fetch_raw.get_client") as mock_get_client:
         mock_client = AsyncMock()
         mock_get_client.return_value = mock_client
-        mock_client.base_url = "https://test.example.com/api/data/"
+        mock_client.base_url = "https://data.seattle.gov/resource/kzjm-xkqj.json"
         yield mock_client
 
 
@@ -42,10 +59,15 @@ class TestFetchRaw:
     """Test the fetch_raw tool."""
 
     @pytest.mark.asyncio
-    async def test_fetch_raw_default_params(self, mock_http_client, example_response):
+    async def test_fetch_raw_default_params(
+        self, mock_http_client, example_socrata_response
+    ):
         """Test fetch_raw with default parameters."""
         # Setup mock response
-        mock_http_client.fetch_incidents.return_value = (example_response, False)
+        mock_http_client.fetch_incidents.return_value = (
+            example_socrata_response,
+            False,
+        )
 
         # Call tool with minimal arguments
         result = await fetch_raw({})
@@ -55,21 +77,22 @@ class TestFetchRaw:
         call_args = mock_http_client.fetch_incidents.call_args
         params, cache_ttl = call_args[0]
 
-        assert params["order"] == "new"
-        assert params["length"] == 100
-        assert params["page"] == 1
+        assert params["$order"] == "datetime DESC"
+        assert params["$limit"] == "100"
         assert cache_ttl == 15
 
         # Check result structure
         assert "meta" in result
         assert "incidents" in result
         assert "source" in result
-        assert len(result["incidents"]) == 4
+        assert len(result["incidents"]) == 2
 
     @pytest.mark.asyncio
-    async def test_fetch_raw_custom_params(self, mock_http_client, example_response):
+    async def test_fetch_raw_custom_params(
+        self, mock_http_client, example_socrata_response
+    ):
         """Test fetch_raw with custom parameters."""
-        mock_http_client.fetch_incidents.return_value = (example_response, True)
+        mock_http_client.fetch_incidents.return_value = (example_socrata_response, True)
 
         arguments = {
             "order": "old",
@@ -84,9 +107,8 @@ class TestFetchRaw:
         call_args = mock_http_client.fetch_incidents.call_args
         params, cache_ttl = call_args[0]
 
-        assert params["order"] == "old"
-        assert params["length"] == 50
-        assert params["search"] == "fire"
+        assert params["$order"] == "datetime ASC"
+        assert params["$limit"] == "50"
         assert cache_ttl == 60
 
         # Check cache hit reflected in response
@@ -115,29 +137,30 @@ class TestLatestIncident:
     """Test the latest_incident tool."""
 
     @pytest.mark.asyncio
-    async def test_latest_incident_success(self, example_response):
+    async def test_latest_incident_success(self):
         """Test successful latest incident retrieval."""
         with patch("mcp_sfd.tools.latest_incident.fetch_raw") as mock_fetch:
             # Setup mock to return our example data
             mock_response = {
                 "incidents": [
                     {
-                        "id": 12345,
                         "incident_number": "F250915-001",
                         "type": "Fire in Building",
-                        "description": "STRUCTURE FIRE",
+                        "address": "123 Main St",
                         "datetime_local": "2025-09-15T16:05:27-07:00",
                         "datetime_utc": "2025-09-15T23:05:27+00:00",
-                        "address": "123 Main St",
-                        "active": True,
-                        "late": False,
-                        "units": ["E16", "L15"],
-                        "unit_status": {},
+                        "latitude": 47.6062,
+                        "longitude": -122.3321,
+                        "report_location": None,
+                        "computed_region_ru88_fbhk": None,
+                        "computed_region_kuhn_3gp2": None,
+                        "computed_region_q256_3sug": None,
+                        "estimated_active": True,
                         "raw": None,
                     }
                 ],
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": "2025-09-15T23:10:00+00:00",
                     "cache_hit": False,
                 },
@@ -150,12 +173,12 @@ class TestLatestIncident:
             mock_fetch.assert_called_once()
             call_args = mock_fetch.call_args[0][0]
             assert call_args["order"] == "new"
-            assert call_args["length"] == 10
+            assert call_args["length"] == 1
 
             # Check result structure
             assert "incident" in result
             assert "source" in result
-            assert result["incident"]["id"] == 12345
+            assert result["incident"]["incident_number"] == "F250915-001"
 
     @pytest.mark.asyncio
     async def test_latest_incident_no_incidents(self):
@@ -164,7 +187,7 @@ class TestLatestIncident:
             mock_fetch.return_value = {
                 "incidents": [],
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": "2025-09-15T23:10:00+00:00",
                     "cache_hit": False,
                 },
@@ -181,28 +204,22 @@ class TestIsFireActive:
     async def test_is_fire_active_with_active_fire(self):
         """Test fire detection with active fire incident."""
         # Create recent fire incident (within lookback)
-        recent_time = datetime.now(pytz.UTC) - timedelta(minutes=30)
+        recent_time = datetime.now(pytz.UTC) - timedelta(minutes=10)
 
         mock_incidents = [
             {
-                "id": 1,
                 "incident_number": "F250915-001",
-                "type": "Fire in Building",
-                "description": "Structure fire",
+                "type": "Structure Fire",
+                "address": "123 Main St",
                 "datetime_local": recent_time.isoformat(),
                 "datetime_utc": recent_time.isoformat(),
-                "address": "123 Main St",
-                "active": True,  # Explicitly active
-                "late": False,
-                "units": ["E16"],
-                "unit_status": {
-                    "E16": {
-                        "dispatched": recent_time.isoformat(),
-                        "arrived": None,
-                        "transport": None,
-                        "in_service": None,
-                    }
-                },
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "report_location": None,
+                "computed_region_ru88_fbhk": None,
+                "computed_region_kuhn_3gp2": None,
+                "computed_region_q256_3sug": None,
+                "estimated_active": True,  # Recent incident
                 "raw": None,
             }
         ]
@@ -211,7 +228,7 @@ class TestIsFireActive:
             mock_fetch.return_value = {
                 "incidents": mock_incidents,
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -226,29 +243,23 @@ class TestIsFireActive:
     @pytest.mark.asyncio
     async def test_is_fire_active_with_inactive_fire(self):
         """Test fire detection with inactive fire incident."""
-        # Create old fire incident (outside lookback)
-        old_time = datetime.now(pytz.UTC) - timedelta(hours=3)
+        # Create old fire incident (outside active window)
+        old_time = datetime.now(pytz.UTC) - timedelta(hours=2)
 
         mock_incidents = [
             {
-                "id": 1,
                 "incident_number": "F250915-001",
-                "type": "Fire in Building",
-                "description": "Structure fire",
+                "type": "Structure Fire",
+                "address": "123 Main St",
                 "datetime_local": old_time.isoformat(),
                 "datetime_utc": old_time.isoformat(),
-                "address": "123 Main St",
-                "active": False,
-                "late": False,
-                "units": ["E16"],
-                "unit_status": {
-                    "E16": {
-                        "dispatched": old_time.isoformat(),
-                        "arrived": (old_time + timedelta(minutes=5)).isoformat(),
-                        "transport": None,
-                        "in_service": (old_time + timedelta(minutes=30)).isoformat(),
-                    }
-                },
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "report_location": None,
+                "computed_region_ru88_fbhk": None,
+                "computed_region_kuhn_3gp2": None,
+                "computed_region_q256_3sug": None,
+                "estimated_active": False,  # Old incident
                 "raw": None,
             }
         ]
@@ -257,7 +268,7 @@ class TestIsFireActive:
             mock_fetch.return_value = {
                 "incidents": mock_incidents,
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -273,17 +284,18 @@ class TestIsFireActive:
         """Test fire detection with no fire incidents."""
         mock_incidents = [
             {
-                "id": 1,
                 "incident_number": "M250915-001",
                 "type": "Medical Aid",
-                "description": "Medical emergency",
+                "address": "123 Main St",
                 "datetime_local": datetime.now(pytz.UTC).isoformat(),
                 "datetime_utc": datetime.now(pytz.UTC).isoformat(),
-                "address": "123 Main St",
-                "active": True,
-                "late": False,
-                "units": [],
-                "unit_status": {},
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "report_location": None,
+                "computed_region_ru88_fbhk": None,
+                "computed_region_kuhn_3gp2": None,
+                "computed_region_q256_3sug": None,
+                "estimated_active": True,
                 "raw": None,
             }
         ]
@@ -292,7 +304,7 @@ class TestIsFireActive:
             mock_fetch.return_value = {
                 "incidents": mock_incidents,
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -309,17 +321,18 @@ class TestIsFireActive:
         """Test that water rescue without fire mention is excluded."""
         mock_incidents = [
             {
-                "id": 1,
                 "incident_number": "R250915-001",
                 "type": "Water Rescue",
-                "description": "Person in water",
+                "address": "Lake Washington",
                 "datetime_local": datetime.now(pytz.UTC).isoformat(),
                 "datetime_utc": datetime.now(pytz.UTC).isoformat(),
-                "address": "Lake Washington",
-                "active": True,
-                "late": False,
-                "units": [],
-                "unit_status": {},
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "report_location": None,
+                "computed_region_ru88_fbhk": None,
+                "computed_region_kuhn_3gp2": None,
+                "computed_region_q256_3sug": None,
+                "estimated_active": True,
                 "raw": None,
             }
         ]
@@ -328,7 +341,7 @@ class TestIsFireActive:
             mock_fetch.return_value = {
                 "incidents": mock_incidents,
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -347,18 +360,18 @@ class TestHasEvacuationOrders:
         """Test evacuation detection when keywords are found."""
         mock_incidents = [
             {
-                "id": 1,
                 "incident_number": "F250915-001",
-                "type": "Fire in Building",
-                "description": "STRUCTURE FIRE - EVACUATION ORDER IN EFFECT",
-                "description_clean": "Large structure fire with evacuation advisory",
+                "type": "Evacuation Order",  # Keyword in type
+                "address": "123 Main St",
                 "datetime_local": datetime.now(pytz.UTC).isoformat(),
                 "datetime_utc": datetime.now(pytz.UTC).isoformat(),
-                "address": "123 Main St",
-                "active": True,
-                "late": False,
-                "units": [],
-                "unit_status": {},
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "report_location": None,
+                "computed_region_ru88_fbhk": None,
+                "computed_region_kuhn_3gp2": None,
+                "computed_region_q256_3sug": None,
+                "estimated_active": True,
                 "raw": None,
             }
         ]
@@ -367,7 +380,7 @@ class TestHasEvacuationOrders:
             mock_fetch.return_value = {
                 "incidents": mock_incidents,
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -385,17 +398,18 @@ class TestHasEvacuationOrders:
         """Test evacuation detection when no keywords found."""
         mock_incidents = [
             {
-                "id": 1,
                 "incident_number": "M250915-001",
                 "type": "Medical Aid",
-                "description": "Medical emergency",
+                "address": "123 Main St",
                 "datetime_local": datetime.now(pytz.UTC).isoformat(),
                 "datetime_utc": datetime.now(pytz.UTC).isoformat(),
-                "address": "123 Main St",
-                "active": True,
-                "late": False,
-                "units": [],
-                "unit_status": {},
+                "latitude": 47.6062,
+                "longitude": -122.3321,
+                "report_location": None,
+                "computed_region_ru88_fbhk": None,
+                "computed_region_kuhn_3gp2": None,
+                "computed_region_q256_3sug": None,
+                "estimated_active": True,
                 "raw": None,
             }
         ]
@@ -404,7 +418,7 @@ class TestHasEvacuationOrders:
             mock_fetch.return_value = {
                 "incidents": mock_incidents,
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -423,7 +437,7 @@ class TestHasEvacuationOrders:
             mock_fetch.return_value = {
                 "incidents": [],
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },
@@ -464,22 +478,23 @@ class TestToolValidation:
             mock_fetch.return_value = {
                 "incidents": [
                     {
-                        "id": 1,
                         "incident_number": "TEST-001",
                         "type": "Test",
-                        "description": "Test",
+                        "address": "Test",
                         "datetime_local": datetime.now(pytz.UTC).isoformat(),
                         "datetime_utc": datetime.now(pytz.UTC).isoformat(),
-                        "address": "Test",
-                        "active": False,
-                        "late": False,
-                        "units": [],
-                        "unit_status": {},
+                        "latitude": None,
+                        "longitude": None,
+                        "report_location": None,
+                        "computed_region_ru88_fbhk": None,
+                        "computed_region_kuhn_3gp2": None,
+                        "computed_region_q256_3sug": None,
+                        "estimated_active": False,
                         "raw": None,
                     }
                 ],
                 "source": {
-                    "url": "https://test.example.com/api/data/",
+                    "url": "https://data.seattle.gov/resource/kzjm-xkqj.json",
                     "fetched_at": datetime.now(pytz.UTC).isoformat(),
                     "cache_hit": False,
                 },

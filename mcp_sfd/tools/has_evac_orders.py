@@ -1,7 +1,7 @@
 """
 Implementation of sfd.has_evacuation_orders tool.
 
-This tool scans incident data for evacuation-related keywords to detect
+This tool scans incident data from Socrata for evacuation-related keywords to detect
 potential evacuation orders or advisories.
 """
 
@@ -26,8 +26,8 @@ def check_incident_for_evacuation(incident: Incident) -> bool:
     """
     Check if an incident contains evacuation-related keywords.
 
-    Searches in description, description_clean, and other text fields
-    for evacuation keywords (case insensitive).
+    Searches in type and address fields for evacuation keywords (case insensitive).
+    Since Socrata data has limited text fields, we focus on type and address.
 
     Args:
         incident: The incident to check
@@ -35,32 +35,23 @@ def check_incident_for_evacuation(incident: Incident) -> bool:
     Returns:
         True if evacuation keywords are found
     """
-    # Collect all text fields to search
+    # Collect available text fields to search (limited in Socrata data)
     text_fields = []
-
-    if incident.description:
-        text_fields.append(incident.description.lower())
-
-    if incident.description_clean:
-        text_fields.append(incident.description_clean.lower())
 
     if incident.type:
         text_fields.append(incident.type.lower())
 
-    if incident.response_type:
-        text_fields.append(incident.response_type.lower())
-
-    if incident.response_mode:
-        text_fields.append(incident.response_mode.lower())
+    if incident.address:
+        text_fields.append(incident.address.lower())
 
     # Check for evacuation keywords in all text fields
     for text in text_fields:
         for keyword in EVACUATION_KEYWORDS:
             if keyword.lower() in text:
                 logger.debug(
-                    f"Found evacuation keyword '{keyword}' in incident {incident.id}",
+                    f"Found evacuation keyword '{keyword}' in incident {incident.incident_number}",
                     extra={
-                        "incident_id": incident.id,
+                        "incident_number": incident.incident_number,
                         "keyword": keyword,
                         "text_field": text[:100],  # First 100 chars for context
                     },
@@ -102,9 +93,9 @@ def filter_incidents_by_timeframe(
 
 async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
     """
-    Check for evacuation orders in recent incidents.
+    Check for evacuation orders in recent incidents from Socrata.
 
-    Scans incident descriptions for evacuation-related keywords and provides
+    Scans incident types and addresses for evacuation-related keywords and provides
     guidance about official evacuation information sources.
 
     Args:
@@ -124,7 +115,7 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Invalid arguments: {e}") from e
 
     logger.info(
-        "Checking for evacuation orders",
+        "Checking for evacuation orders via Socrata",
         extra={"lookback_minutes": input_data.lookbackMinutes},
     )
 
@@ -138,9 +129,9 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
         "dateEnd": "Today",  # Today's incidents
         "search": "Any",  # No search filtering
         "location": "Any",  # No location filter
-        "unit": "Any",  # No unit filter
+        "unit": "Any",  # No unit filter (ignored in Socrata)
         "type": "Any",  # No type filter
-        "area": "Any",  # No area filter
+        "area": "Any",  # No area filter (ignored in Socrata)
         "cacheTtlSeconds": 30,  # Slightly longer cache for this analysis
     }
 
@@ -148,16 +139,39 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
     raw_response = await fetch_raw(fetch_args)
     all_incidents = [Incident(**inc) for inc in raw_response.get("incidents", [])]
 
+    logger.info(f"Fetched {len(all_incidents)} total incidents for evacuation analysis")
+
     # Filter by timeframe
     recent_incidents = filter_incidents_by_timeframe(
         all_incidents, input_data.lookbackMinutes
     )
 
+    logger.info(
+        f"Filtered to {len(recent_incidents)} incidents within {input_data.lookbackMinutes} minutes"
+    )
+
     # Check each incident for evacuation keywords
     evacuation_incidents = []
-    for incident in recent_incidents:
+    for i, incident in enumerate(recent_incidents):
+        logger.debug(
+            f"Checking incident {i+1}/{len(recent_incidents)} for evacuation keywords",
+            extra={
+                "incident_number": incident.incident_number,
+                "type": incident.type,
+                "address": incident.address,
+            },
+        )
+
         if check_incident_for_evacuation(incident):
             evacuation_incidents.append(incident)
+            logger.info(
+                f"Found evacuation-related incident: {incident.incident_number}",
+                extra={
+                    "incident_number": incident.incident_number,
+                    "type": incident.type,
+                    "address": incident.address,
+                },
+            )
 
     # Determine result
     has_evacuation = len(evacuation_incidents) > 0
@@ -173,7 +187,7 @@ async def has_evacuation_orders(arguments: dict[str, Any]) -> dict[str, Any]:
         )
     else:
         notes = (
-            f"No evacuation-related keywords found in incident descriptions from the last "
+            f"No evacuation-related keywords found in incident types or addresses from the last "
             f"{input_data.lookbackMinutes} minutes. Note that official evacuation orders "
             "typically come from AlertSeattle, Seattle Emergency Management, or Seattle Fire "
             "Department official channels, not the live incident feed."

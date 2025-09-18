@@ -1,8 +1,8 @@
 """
 Implementation of sfd.is_fire_active tool.
 
-This tool detects active fire incidents by analyzing incident types,
-descriptions, and unit status information.
+This tool detects active fire incidents by analyzing incident types and
+using time-based heuristics since Socrata data lacks unit status information.
 """
 
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def is_fire_related_incident(incident: Incident) -> tuple[bool, str]:
     """
-    Determine if an incident is fire-related based on type and description.
+    Determine if an incident is fire-related based on type.
 
     Args:
         incident: The incident to analyze
@@ -33,15 +33,12 @@ def is_fire_related_incident(incident: Incident) -> tuple[bool, str]:
     Returns:
         Tuple of (is_fire_related, reason)
     """
-    # Collect text fields to check
+    # Collect text fields to check (simplified for Socrata data)
     text_fields = {
         "type": incident.type or "",
-        "description": incident.description or "",
-        "description_clean": incident.description_clean or "",
-        "type_code": incident.type_code or "",
     }
 
-    # Check for fire keywords
+    # Check for fire keywords in incident type
     fire_indicators = []
     for field_name, text in text_fields.items():
         text_lower = text.lower()
@@ -52,14 +49,11 @@ def is_fire_related_incident(incident: Incident) -> tuple[bool, str]:
     # Special handling for exclusions
     if fire_indicators:
         for exclusion in FIRE_EXCLUSIONS:
-            # Check if this is a water rescue
+            # Check if this is a water rescue type
             if exclusion.lower() in text_fields["type"].lower():
-                # Only exclude if description doesn't mention fire
-                description_text = (
-                    text_fields["description"] + " " + text_fields["description_clean"]
-                ).lower()
-                if "fire" not in description_text:
-                    return False, f"Excluded {exclusion} without fire in description"
+                # Only exclude if type doesn't specifically mention fire
+                if "fire" not in text_fields["type"].lower():
+                    return False, f"Excluded {exclusion} without fire in type"
 
     if fire_indicators:
         return True, f"Fire keywords found: {', '.join(fire_indicators)}"
@@ -67,15 +61,14 @@ def is_fire_related_incident(incident: Incident) -> tuple[bool, str]:
     return False, "No fire-related keywords found"
 
 
-def is_incident_still_active(
+def is_incident_still_active_estimated(
     incident: Incident, lookback_minutes: int
 ) -> tuple[bool, str]:
     """
-    Determine if an incident is still active based on status and timing.
+    Estimate if an incident is still active using time-based heuristics.
 
-    An incident is considered active if:
-    1. The 'active' field is True, OR
-    2. The incident occurred within lookback_minutes AND no units have 'in_service' status
+    Since Socrata data doesn't include unit status, we use the estimated_active
+    field which is based on recency (incidents within last 30 minutes).
 
     Args:
         incident: The incident to analyze
@@ -84,40 +77,16 @@ def is_incident_still_active(
     Returns:
         Tuple of (is_active, reason)
     """
-    # Check the explicit active flag first
-    if incident.active:
-        return True, "Incident marked as active"
+    # Use the estimated_active field from our normalization
+    if incident.estimated_active:
+        return True, "Incident estimated active (within 30 minutes)"
 
-    # Check if incident is within the lookback window
+    # Check if incident is within the lookback window for edge cases
     cutoff_time = datetime.now(pytz.UTC) - timedelta(minutes=lookback_minutes)
-    if incident.datetime_utc < cutoff_time:
-        return False, f"Incident older than {lookback_minutes} minutes"
+    if incident.datetime_utc >= cutoff_time:
+        return True, f"Recent incident within {lookback_minutes} minutes"
 
-    # Check unit status - if ANY unit is in service, incident is likely inactive
-    units_in_service = []
-    units_not_in_service = []
-
-    for unit_name, status in incident.unit_status.items():
-        if status.in_service:
-            units_in_service.append(unit_name)
-        else:
-            units_not_in_service.append(unit_name)
-
-    if units_in_service:
-        return False, f"Units {', '.join(units_in_service)} marked as in service"
-
-    # If no units have in_service status and incident is recent, consider active
-    if units_not_in_service:
-        return (
-            True,
-            f"Recent incident with units {', '.join(units_not_in_service)} still responding",
-        )
-
-    # If no unit status information, consider active if recent
-    return (
-        True,
-        f"Recent incident within {lookback_minutes} minutes with no unit status data",
-    )
+    return False, "Incident older than estimated active window"
 
 
 def filter_incidents_by_timeframe(
@@ -154,8 +123,8 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
     """
     Check if there are any active fire incidents in Seattle.
 
-    Analyzes recent incidents to determine if any fire-related incidents
-    are currently active based on type detection and unit status.
+    Analyzes recent incidents from Socrata to determine if any fire-related
+    incidents are currently active based on type detection and time heuristics.
 
     Args:
         arguments: Tool arguments with optional lookback time
@@ -174,7 +143,7 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         raise ValueError(f"Invalid arguments: {e}") from e
 
     logger.info(
-        "Checking for active fire incidents",
+        "Checking for active fire incidents via Socrata",
         extra={"lookback_minutes": input_data.lookbackMinutes},
     )
 
@@ -188,9 +157,9 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         "dateEnd": "Today",  # Today's incidents
         "search": "Any",  # No search filtering
         "location": "Any",  # No location filter
-        "unit": "Any",  # No unit filter
+        "unit": "Any",  # No unit filter (ignored in Socrata)
         "type": "Any",  # No type filter
-        "area": "Any",  # No area filter
+        "area": "Any",  # No area filter (ignored in Socrata)
         "cacheTtlSeconds": 30,  # Slightly longer cache for this analysis
     }
 
@@ -199,27 +168,22 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
     all_incidents = [Incident(**inc) for inc in raw_response.get("incidents", [])]
 
     # Log sample of incidents to understand data patterns
-    logger.info(f"Fetched {len(all_incidents)} total incidents for analysis")
-    for i, incident in enumerate(all_incidents[:5]):  # Log first 5 incidents
+    logger.info(f"Fetched {len(all_incidents)} total incidents for fire analysis")
+    for i, incident in enumerate(all_incidents[:3]):  # Log first 3 incidents
         logger.info(
-            f"Sample incident {i+1}/5",
+            f"Sample incident {i+1}/3",
             extra={
-                "incident_id": incident.id,
                 "incident_number": incident.incident_number or "EMPTY",
                 "type": incident.type or "EMPTY",
-                "description": incident.description or "EMPTY",
                 "address": incident.address or "EMPTY",
-                "active": incident.active,
-                "units": incident.units or [],
-                "unit_count": len(incident.units) if incident.units else 0,
+                "estimated_active": incident.estimated_active,
                 "datetime_local": (
                     incident.datetime_local.isoformat()
                     if incident.datetime_local
                     else "NO_TIME"
                 ),
-                "raw_data_keys": list(incident.raw.keys()) if incident.raw else [],
-                "raw_name": incident.raw.get("name") if incident.raw else None,
-                "raw_zoning": incident.raw.get("zoning") if incident.raw else None,
+                "latitude": incident.latitude,
+                "longitude": incident.longitude,
             },
         )
 
@@ -243,21 +207,15 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         logger.info(
             f"Analyzing incident {i+1}/{len(recent_incidents)}",
             extra={
-                "incident_id": incident.id,
                 "incident_number": incident.incident_number or "EMPTY",
                 "type": incident.type or "EMPTY",
-                "description": incident.description or "EMPTY",
                 "address": incident.address or "EMPTY",
-                "active_flag": incident.active,
-                "units": incident.units or [],
-                "unit_status": incident.unit_status or {},
+                "estimated_active": incident.estimated_active,
                 "datetime_local": (
                     incident.datetime_local.isoformat()
                     if incident.datetime_local
                     else "NO_TIME"
                 ),
-                "raw_name": incident.raw.get("name") if incident.raw else None,
-                "raw_zoning": incident.raw.get("zoning") if incident.raw else None,
             },
         )
 
@@ -271,8 +229,8 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         if not is_fire:
             continue
 
-        # Check if still active
-        is_active, active_reason = is_incident_still_active(
+        # Check if still active using time estimation
+        is_active, active_reason = is_incident_still_active_estimated(
             incident, input_data.lookbackMinutes
         )
 
@@ -282,7 +240,6 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
 
         analysis_details.append(
             {
-                "incident_id": incident.id,
                 "incident_number": incident.incident_number,
                 "type": incident.type,
                 "is_fire": is_fire,
@@ -321,8 +278,8 @@ async def is_fire_active(arguments: dict[str, Any]) -> dict[str, Any]:
         if fire_count > 0:
             reasoning = (
                 f"Found {fire_count} fire-related incident(s) in the last "
-                f"{input_data.lookbackMinutes} minutes, but none are currently active. "
-                "Units have either completed service or incidents are marked inactive."
+                f"{input_data.lookbackMinutes} minutes, but none are estimated to be currently active. "
+                "All fire incidents are older than 30 minutes."
             )
         else:
             reasoning = (

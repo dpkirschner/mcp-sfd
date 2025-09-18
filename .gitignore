@@ -85,3 +85,6 @@ $RECYCLE.BIN/
 
 # Cache files
 *.cache
+
+# new editor
+.kiro/

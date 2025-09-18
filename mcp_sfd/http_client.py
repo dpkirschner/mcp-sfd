@@ -1,8 +1,8 @@
 """
-HTTP client for SFD API with retry logic and caching.
+HTTP client for Seattle Socrata API with retry logic and caching.
 
 This module provides a robust HTTP client that handles retries, timeouts,
-and in-memory caching for the Seattle Fire Department API.
+and in-memory caching for the Seattle Fire Department data via Socrata API.
 """
 
 import asyncio
@@ -32,10 +32,12 @@ class CacheEntry:
 
 
 class SFDClient:
-    """HTTP client for Seattle Fire Department API with caching and retry logic."""
+    """HTTP client for Seattle Fire Department Socrata API with caching and retry logic."""
 
     def __init__(self) -> None:
-        self.base_url = os.getenv("SFD_BASE_URL", "https://sfdlive.com/api/data/")
+        self.base_url = os.getenv(
+            "SFD_BASE_URL", "https://data.seattle.gov/resource/kzjm-xkqj.json"
+        )
         self.default_cache_ttl = int(os.getenv("DEFAULT_CACHE_TTL", "15"))
         self._cache: dict[str, CacheEntry] = {}
         self._client: httpx.AsyncClient | None = None
@@ -45,11 +47,9 @@ class SFDClient:
         if self._client is None:
             timeout = httpx.Timeout(10.0)
             headers = {
-                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36",
-                "Accept": "application/json, text/javascript, */*; q=0.01",
+                "User-Agent": "mcp-sfd/1.0.0",
+                "Accept": "application/json",
                 "Accept-Encoding": "gzip, br",
-                "Referer": "https://sfdlive.com/",
-                "X-Requested-With": "XMLHttpRequest",
             }
             self._client = httpx.AsyncClient(
                 timeout=timeout,
@@ -79,13 +79,11 @@ class SFDClient:
 
         for attempt in range(3):  # Initial attempt + 2 retries
             try:
-                # Add cache buster if not using cache
+                # Use params directly for Socrata API
                 request_params = params.copy()
-                if (
-                    "cacheTtlSeconds" not in request_params
-                    or request_params.get("cacheTtlSeconds", 0) == 0
-                ):
-                    request_params["_"] = str(int(time.time() * 1000))
+                # Remove internal cache parameter
+                if "cacheTtlSeconds" in request_params:
+                    del request_params["cacheTtlSeconds"]
 
                 start_time = time.time()
                 response = await client.get(url, params=request_params)
@@ -115,7 +113,7 @@ class SFDClient:
                         )
                         raise MCPToolError(
                             "SCHEMA_VALIDATION_ERROR",
-                            f"Invalid JSON response from upstream API: {e}",
+                            f"Invalid JSON response from Socrata API: {e}",
                         ) from e
 
                 # Retry on server errors
@@ -143,7 +141,7 @@ class SFDClient:
                 )
                 raise MCPToolError(
                     "UPSTREAM_HTTP_ERROR",
-                    f"SFD API returned HTTP {response.status_code}",
+                    f"Socrata API returned HTTP {response.status_code}",
                 )
 
             except httpx.TimeoutException as e:
@@ -176,7 +174,7 @@ class SFDClient:
         if isinstance(last_exception, httpx.TimeoutException):
             logger.error("Request timed out after all retries")
             raise MCPToolError(
-                "UPSTREAM_TIMEOUT", "SFD API request timed out after retries"
+                "UPSTREAM_TIMEOUT", "Socrata API request timed out after retries"
             )
         else:
             logger.error(
@@ -188,12 +186,12 @@ class SFDClient:
 
     async def fetch_incidents(
         self, params: dict[str, Any], cache_ttl_seconds: int | None = None
-    ) -> tuple[dict[str, Any], bool]:
+    ) -> tuple[list[dict[str, Any]], bool]:
         """
-        Fetch incidents from SFD API with caching.
+        Fetch incidents from Socrata API with caching.
 
         Returns:
-            Tuple of (response_data, cache_hit)
+            Tuple of (response_data, cache_hit) where response_data is a list of incidents
         """
         if cache_ttl_seconds is None:
             cache_ttl_seconds = self.default_cache_ttl
@@ -211,6 +209,14 @@ class SFDClient:
 
         # Make API request
         data, _ = await self._make_request_with_retry(self.base_url, params)
+
+        # Socrata returns array directly, not wrapped in object
+        if not isinstance(data, list):
+            logger.error(f"Expected list response from Socrata, got {type(data)}")
+            raise MCPToolError(
+                "SCHEMA_VALIDATION_ERROR",
+                f"Expected list response from Socrata API, got {type(data)}",
+            )
 
         # Store in cache if TTL > 0
         if cache_ttl_seconds > 0:
@@ -244,7 +250,7 @@ _client: SFDClient | None = None
 
 
 async def get_client() -> SFDClient:
-    """Get the global SFD client instance."""
+    """Get the global Socrata client instance."""
     global _client
     if _client is None:
         _client = SFDClient()
@@ -252,7 +258,7 @@ async def get_client() -> SFDClient:
 
 
 async def close_client() -> None:
-    """Close the global SFD client instance."""
+    """Close the global Socrata client instance."""
     global _client
     if _client:
         await _client.close()
