@@ -13,8 +13,8 @@ from seattle_api.circuit_breaker import (
 )
 
 
-class TestException(Exception):
-    """Test exception for circuit breaker testing."""
+class MockException(Exception):
+    """Mock exception for circuit breaker testing."""
 
     pass
 
@@ -25,7 +25,7 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_circuit_closed_allows_requests(self):
         """Test that closed circuit allows requests through."""
-        cb = CircuitBreaker(failure_threshold=2, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=2, expected_exception=MockException)
 
         async def successful_function():
             return "success"
@@ -37,19 +37,19 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_circuit_opens_after_failures(self):
         """Test that circuit opens after reaching failure threshold."""
-        cb = CircuitBreaker(failure_threshold=2, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=2, expected_exception=MockException)
 
         async def failing_function():
-            raise TestException("Test failure")
+            raise MockException("Test failure")
 
         # First failure
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(failing_function)
         assert cb.state == CircuitState.CLOSED
         assert cb.failure_count == 1
 
         # Second failure - should open circuit
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(failing_function)
         assert cb.state == CircuitState.OPEN
         assert cb.failure_count == 2
@@ -57,13 +57,13 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_open_circuit_rejects_requests(self):
         """Test that open circuit rejects requests."""
-        cb = CircuitBreaker(failure_threshold=1, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=1, expected_exception=MockException)
 
         async def failing_function():
-            raise TestException("Test failure")
+            raise MockException("Test failure")
 
         # Cause circuit to open
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(failing_function)
         assert cb.state == CircuitState.OPEN
 
@@ -77,16 +77,16 @@ class TestCircuitBreaker:
         cb = CircuitBreaker(
             failure_threshold=1,
             recovery_timeout=0.1,  # 100ms
-            expected_exception=TestException,
+            expected_exception=MockException,
         )
 
         async def initially_failing_then_successful():
             if cb.state == CircuitState.HALF_OPEN:
                 return "recovered"
-            raise TestException("Still failing")
+            raise MockException("Still failing")
 
         # Cause circuit to open
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(initially_failing_then_successful)
         assert cb.state == CircuitState.OPEN
 
@@ -103,14 +103,14 @@ class TestCircuitBreaker:
     async def test_half_open_failed_recovery(self):
         """Test that failed recovery reopens the circuit."""
         cb = CircuitBreaker(
-            failure_threshold=1, recovery_timeout=0.1, expected_exception=TestException
+            failure_threshold=1, recovery_timeout=0.1, expected_exception=MockException
         )
 
         async def always_failing():
-            raise TestException("Always fails")
+            raise MockException("Always fails")
 
         # Open circuit
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(always_failing)
         assert cb.state == CircuitState.OPEN
 
@@ -118,20 +118,20 @@ class TestCircuitBreaker:
         await asyncio.sleep(0.15)
 
         # Recovery attempt should fail and reopen circuit
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(always_failing)
         assert cb.state == CircuitState.OPEN
 
     @pytest.mark.asyncio
     async def test_manual_reset(self):
         """Test manual circuit reset functionality."""
-        cb = CircuitBreaker(failure_threshold=1, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=1, expected_exception=MockException)
 
         async def failing_function():
-            raise TestException("Test failure")
+            raise MockException("Test failure")
 
         # Open circuit
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(failing_function)
         assert cb.state == CircuitState.OPEN
 
@@ -143,7 +143,7 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_manual_force_open(self):
         """Test manual circuit force open functionality."""
-        cb = CircuitBreaker(failure_threshold=5, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=5, expected_exception=MockException)
 
         async def successful_function():
             return "success"
@@ -161,7 +161,7 @@ class TestCircuitBreaker:
 
     def test_statistics(self):
         """Test circuit breaker statistics collection."""
-        cb = CircuitBreaker(failure_threshold=2, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=2, expected_exception=MockException)
 
         stats = cb.get_statistics()
 
@@ -178,15 +178,15 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_success_resets_failure_count(self):
         """Test that success resets failure count in closed state."""
-        cb = CircuitBreaker(failure_threshold=3, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=3, expected_exception=MockException)
 
         async def sometimes_failing():
             if cb.failure_count == 0:
-                raise TestException("First failure")
+                raise MockException("First failure")
             return "success"
 
         # First call fails
-        with pytest.raises(TestException):
+        with pytest.raises(MockException):
             await cb.call(sometimes_failing)
         assert cb.failure_count == 1
 
@@ -198,7 +198,7 @@ class TestCircuitBreaker:
     @pytest.mark.asyncio
     async def test_unexpected_exception_not_handled(self):
         """Test that unexpected exceptions pass through without affecting circuit."""
-        cb = CircuitBreaker(failure_threshold=1, expected_exception=TestException)
+        cb = CircuitBreaker(failure_threshold=1, expected_exception=MockException)
 
         async def different_failure():
             raise ValueError("Different exception type")

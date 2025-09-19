@@ -3,7 +3,7 @@
 from datetime import datetime
 from enum import Enum
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class IncidentStatus(Enum):
@@ -71,11 +71,13 @@ class Incident(BaseModel):
 
     model_config = ConfigDict(
         use_enum_values=True,
-        json_encoders={
-            datetime: lambda v: v.isoformat(),
-            IncidentStatus: lambda v: v.value,
-        },
     )
+
+    @field_serializer("incident_datetime", "first_seen", "last_seen", "closed_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        """Serialize datetime fields to ISO format."""
+        return value.isoformat() if value else None
+
 
 
 class RawIncident(BaseModel):

@@ -71,15 +71,15 @@ class TestIncident:
         result = incident.model_dump()
 
         assert result["incident_id"] == "F240001234"
-        assert result["incident_datetime"] == now
+        assert result["incident_datetime"] == now.isoformat()
         assert result["priority"] == 3
         assert result["units"] == ["E17", "L9"]
         assert result["address"] == "123 Main St"
         assert result["incident_type"] == "Aid Response"
         assert result["status"] == "closed"
-        assert result["first_seen"] == now
-        assert result["last_seen"] == now
-        assert result["closed_at"] == closed_time
+        assert result["first_seen"] == now.isoformat()
+        assert result["last_seen"] == now.isoformat()
+        assert result["closed_at"] == closed_time.isoformat()
 
 
 class TestRawIncident:

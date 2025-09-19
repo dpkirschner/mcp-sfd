@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 from .models import Incident, IncidentStatus
 
@@ -16,6 +16,11 @@ class APIResponse(BaseModel):
     timestamp: datetime = Field(
         default_factory=datetime.now, description="Response timestamp"
     )
+
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        """Serialize timestamp to ISO format."""
+        return value.isoformat()
 
 
 class IncidentResponse(APIResponse):
@@ -64,6 +69,11 @@ class HealthResponse(BaseModel):
         None, description="Poller health status"
     )
 
+    @field_serializer("timestamp")
+    def serialize_timestamp(self, value: datetime) -> str:
+        """Serialize timestamp to ISO format."""
+        return value.isoformat()
+
 
 class IncidentSearchParams(BaseModel):
     """Query parameters for incident search."""
@@ -87,10 +97,10 @@ class IncidentSearchParams(BaseModel):
         None, description="Filter incidents before this datetime"
     )
 
-    class Config:
-        """Pydantic configuration."""
+    model_config = ConfigDict(use_enum_values=True)
 
-        json_encoders = {
-            datetime: lambda v: v.isoformat(),
-            IncidentStatus: lambda v: v.value,
-        }
+    @field_serializer("since", "until")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        """Serialize datetime fields to ISO format."""
+        return value.isoformat() if value else None
+
