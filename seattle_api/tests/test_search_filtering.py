@@ -4,17 +4,62 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from seattle_api.main import app
+from seattle_api.api_models import HealthResponse
 from seattle_api.models import Incident, IncidentStatus
+from seattle_api.routes import incidents_router
 from seattle_api.routes.incidents import get_cache
 
 
-@pytest.fixture
-def comprehensive_incidents():
-    """Comprehensive set of test incidents for search testing."""
-    return [
+# Create a lightweight test app without expensive lifespan operations
+def create_test_app() -> FastAPI:
+    """Create a FastAPI test app without production lifespan dependencies."""
+    test_app = FastAPI(
+        title="Test Seattle Fire Department Incident API",
+        description="Test API service for Seattle Fire Department live incident data",
+        version="1.0.0",
+        # No lifespan parameter - this avoids the expensive startup/shutdown
+    )
+
+    # Include incident routes
+    test_app.include_router(incidents_router)
+
+    # Add basic health endpoint for testing
+    @test_app.get("/health", response_model=HealthResponse)
+    async def health_check() -> HealthResponse:
+        return HealthResponse(
+            status="healthy",
+            service="seattle-fire-api",
+            version="1.0.0",
+            config={
+                "polling_interval_minutes": 5,
+                "cache_retention_hours": 24,
+                "server_port": 8000,
+                "server_host": "0.0.0.0",
+            },
+            poller_status=None,
+        )
+
+    @test_app.get("/")
+    async def root():
+        return {
+            "message": "Test Seattle Fire Department Incident API",
+            "version": "1.0.0",
+            "description": "Test API service for Seattle Fire Department live incident data",
+        }
+
+    return test_app
+
+
+
+
+@pytest.fixture(scope="session")
+def mock_cache():
+    """Mock cache that returns sample data."""
+    # Create comprehensive incidents data for the session
+    comprehensive_incidents = [
         Incident(
             incident_id="FIRE001",
             incident_datetime=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
@@ -74,10 +119,6 @@ def comprehensive_incidents():
         ),
     ]
 
-
-@pytest.fixture
-def mock_cache(comprehensive_incidents):
-    """Mock cache that returns sample data."""
     cache = MagicMock()
     cache.get_all_incidents.return_value = comprehensive_incidents
     cache.get_active_incidents.return_value = [
@@ -89,19 +130,23 @@ def mock_cache(comprehensive_incidents):
     return cache
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def client(mock_cache):
-    """Test client with mocked dependencies."""
-    app.dependency_overrides[get_cache] = lambda: mock_cache
-    with TestClient(app) as test_client:
+    """Test client with mocked dependencies - session scoped for performance."""
+    test_app = create_test_app()
+    test_app.dependency_overrides[get_cache] = lambda: mock_cache
+
+    with TestClient(test_app) as test_client:
         yield test_client
-    app.dependency_overrides = {}
+
+    # Clean up dependency overrides
+    test_app.dependency_overrides = {}
 
 
 class TestSearchEndpoint:
     """Test cases for the search endpoint."""
 
-    def test_search_general_query_incident_type(self, client, comprehensive_incidents):
+    def test_search_general_query_incident_type(self, client):
         """Test general query searching in incident type."""
         response = client.get("/incidents/search?q=fire")
         assert response.status_code == 200
@@ -117,7 +162,7 @@ class TestSearchEndpoint:
         assert "Structure Fire" in incident_types
         assert "Brush Fire" in incident_types
 
-    def test_search_general_query_address(self, client, comprehensive_incidents):
+    def test_search_general_query_address(self, client):
         """Test general query searching in address."""
         response = client.get("/incidents/search?q=seattle")
         assert response.status_code == 200
@@ -132,7 +177,7 @@ class TestSearchEndpoint:
         seattle_addresses = [addr for addr in addresses if "Seattle" in addr]
         assert len(seattle_addresses) == 3
 
-    def test_search_general_query_incident_id(self, client, comprehensive_incidents):
+    def test_search_general_query_incident_id(self, client):
         """Test general query searching in incident ID."""
         response = client.get("/incidents/search?q=FIRE")
         assert response.status_code == 200
@@ -145,7 +190,7 @@ class TestSearchEndpoint:
         assert "FIRE001" in incident_ids
         assert "FIRE002" in incident_ids
 
-    def test_search_general_query_units(self, client, comprehensive_incidents):
+    def test_search_general_query_units(self, client):
         """Test general query searching in units."""
         response = client.get("/incidents/search?q=E16")
         assert response.status_code == 200
@@ -155,7 +200,7 @@ class TestSearchEndpoint:
         assert data["count"] == 1  # Only FIRE001 has E16
         assert data["data"][0]["incident_id"] == "FIRE001"
 
-    def test_search_by_status(self, client, comprehensive_incidents):
+    def test_search_by_status(self, client):
         """Test filtering by status."""
         response = client.get("/incidents/search?status=active")
         assert response.status_code == 200
@@ -168,7 +213,7 @@ class TestSearchEndpoint:
         for incident in data["data"]:
             assert incident["status"] == "active"
 
-    def test_search_by_incident_type(self, client, comprehensive_incidents):
+    def test_search_by_incident_type(self, client):
         """Test filtering by incident type."""
         response = client.get("/incidents/search?incident_type=fire")
         assert response.status_code == 200
@@ -181,7 +226,7 @@ class TestSearchEndpoint:
         for incident in data["data"]:
             assert "fire" in incident["incident_type"].lower()
 
-    def test_search_by_address(self, client, comprehensive_incidents):
+    def test_search_by_address(self, client):
         """Test filtering by address."""
         response = client.get("/incidents/search?address=main")
         assert response.status_code == 200
@@ -191,7 +236,7 @@ class TestSearchEndpoint:
         assert data["count"] == 1  # Only 123 Main St
         assert "Main St" in data["data"][0]["address"]
 
-    def test_search_by_priority(self, client, comprehensive_incidents):
+    def test_search_by_priority(self, client):
         """Test filtering by priority."""
         response = client.get("/incidents/search?priority=3")
         assert response.status_code == 200
@@ -201,7 +246,7 @@ class TestSearchEndpoint:
         assert data["count"] == 1  # Only FIRE001 has priority 3
         assert data["data"][0]["priority"] == 3
 
-    def test_search_by_datetime_range(self, client, comprehensive_incidents):
+    def test_search_by_datetime_range(self, client):
         """Test filtering by datetime range."""
         since_time = "2023-12-25T22:00:00Z"
         until_time = "2023-12-25T23:30:00Z"
@@ -227,7 +272,7 @@ class TestSearchEndpoint:
                 until_time.replace("Z", "+00:00")
             )
 
-    def test_search_combined_filters(self, client, comprehensive_incidents):
+    def test_search_combined_filters(self, client):
         """Test combining multiple filters."""
         response = client.get("/incidents/search?q=fire&status=active&address=seattle")
         assert response.status_code == 200
@@ -242,7 +287,7 @@ class TestSearchEndpoint:
         assert incident["status"] == "active"
         assert "Seattle" in incident["address"]
 
-    def test_search_no_results(self, client, comprehensive_incidents):
+    def test_search_no_results(self, client):
         """Test search with no matching results."""
         response = client.get("/incidents/search?q=nonexistent")
         assert response.status_code == 200
@@ -253,7 +298,7 @@ class TestSearchEndpoint:
         assert data["metadata"]["total_matches"] == 0
         assert len(data["data"]) == 0
 
-    def test_search_pagination(self, client, comprehensive_incidents):
+    def test_search_pagination(self, client):
         """Test search with pagination."""
         response = client.get("/incidents/search?limit=2&offset=1")
         assert response.status_code == 200
@@ -290,7 +335,7 @@ class TestSearchEndpoint:
         response = client.get("/incidents/search?priority=15")
         assert response.status_code == 422
 
-    def test_search_case_insensitive(self, client, comprehensive_incidents):
+    def test_search_case_insensitive(self, client):
         """Test that search is case-insensitive."""
         # Test different case variations
         test_cases = ["FIRE", "fire", "Fire", "FiRe"]
@@ -302,7 +347,7 @@ class TestSearchEndpoint:
             data = response.json()
             assert data["count"] == 2  # Should always find the same 2 fire incidents
 
-    def test_search_partial_matching(self, client, comprehensive_incidents):
+    def test_search_partial_matching(self, client):
         """Test partial matching functionality."""
         # Test partial matches
         response = client.get("/incidents/search?incident_type=aid")
@@ -319,7 +364,7 @@ class TestSearchEndpoint:
         data = response.json()
         assert data["count"] >= 2  # Should match "Main St", "First St", "Water St"
 
-    def test_search_empty_query(self, client, comprehensive_incidents):
+    def test_search_empty_query(self, client):
         """Test search with empty query returns all incidents."""
         response = client.get("/incidents/search")
         assert response.status_code == 200
@@ -333,9 +378,12 @@ class TestSearchEndpoint:
 class TestSearchFilterHelpers:
     """Test the search filter helper functions."""
 
-    def test_apply_search_filters_general_query(self, comprehensive_incidents):
+    def test_apply_search_filters_general_query(self):
         """Test _apply_search_filters with general query."""
         from seattle_api.routes.incidents import _apply_search_filters
+
+        # Create test incidents for this specific test
+        comprehensive_incidents = self._get_test_incidents()
 
         # Test searching for "fire"
         result = _apply_search_filters(comprehensive_incidents, general_query="fire")
@@ -345,9 +393,11 @@ class TestSearchFilterHelpers:
         result = _apply_search_filters(comprehensive_incidents, general_query="seattle")
         assert len(result) == 3  # All Seattle incidents
 
-    def test_apply_search_filters_specific_filters(self, comprehensive_incidents):
+    def test_apply_search_filters_specific_filters(self):
         """Test _apply_search_filters with specific filters."""
         from seattle_api.routes.incidents import _apply_search_filters
+
+        comprehensive_incidents = self._get_test_incidents()
 
         # Test status filter - count active incidents
         # Note: Due to use_enum_values=True, status is stored as string
@@ -369,9 +419,11 @@ class TestSearchFilterHelpers:
         result = _apply_search_filters(comprehensive_incidents, address="seattle")
         assert len(result) == 3
 
-    def test_apply_search_filters_combined(self, comprehensive_incidents):
+    def test_apply_search_filters_combined(self):
         """Test _apply_search_filters with combined filters."""
         from seattle_api.routes.incidents import _apply_search_filters
+
+        comprehensive_incidents = self._get_test_incidents()
 
         # Combine general query with specific filters
         # Find fire incidents that are active
@@ -397,6 +449,68 @@ class TestSearchFilterHelpers:
             comprehensive_incidents, incident_type="fire", address="seattle"
         )
         assert len(result) == 2  # Both fire incidents are in Seattle
+
+    def _get_test_incidents(self):
+        """Get test incidents for filter helper tests."""
+        return [
+            Incident(
+                incident_id="FIRE001",
+                incident_datetime=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
+                priority=3,
+                units=["E16", "L9", "BC4"],
+                address="123 Main St, Seattle",
+                incident_type="Structure Fire",
+                status=IncidentStatus.ACTIVE,
+                first_seen=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
+                last_seen=datetime(2023, 12, 25, 22, 35, 45, tzinfo=UTC),
+            ),
+            Incident(
+                incident_id="MED001",
+                incident_datetime=datetime(2023, 12, 25, 23, 15, 30, tzinfo=UTC),
+                priority=5,
+                units=["M32", "E25"],
+                address="456 Pine Ave, Bellevue",
+                incident_type="Aid Response",
+                status=IncidentStatus.ACTIVE,
+                first_seen=datetime(2023, 12, 25, 23, 15, 30, tzinfo=UTC),
+                last_seen=datetime(2023, 12, 25, 23, 20, 30, tzinfo=UTC),
+            ),
+            Incident(
+                incident_id="FIRE002",
+                incident_datetime=datetime(2023, 12, 25, 20, 45, 15, tzinfo=UTC),
+                priority=2,
+                units=["E10", "L6"],
+                address="789 Oak Blvd, Seattle",
+                incident_type="Brush Fire",
+                status=IncidentStatus.CLOSED,
+                first_seen=datetime(2023, 12, 25, 20, 45, 15, tzinfo=UTC),
+                last_seen=datetime(2023, 12, 25, 21, 15, 15, tzinfo=UTC),
+                closed_at=datetime(2023, 12, 25, 21, 15, 15, tzinfo=UTC),
+            ),
+            Incident(
+                incident_id="ALARM001",
+                incident_datetime=datetime(2023, 12, 26, 8, 30, 0, tzinfo=UTC),
+                priority=7,
+                units=["E8"],
+                address="321 First St, Redmond",
+                incident_type="Alarm Response",
+                status=IncidentStatus.ACTIVE,
+                first_seen=datetime(2023, 12, 26, 8, 30, 0, tzinfo=UTC),
+                last_seen=datetime(2023, 12, 26, 8, 45, 0, tzinfo=UTC),
+            ),
+            Incident(
+                incident_id="RESCUE001",
+                incident_datetime=datetime(2023, 12, 24, 14, 20, 0, tzinfo=UTC),
+                priority=4,
+                units=["L12", "BC2"],
+                address="555 Water St, Seattle",
+                incident_type="Water Rescue",
+                status=IncidentStatus.CLOSED,
+                first_seen=datetime(2023, 12, 24, 14, 20, 0, tzinfo=UTC),
+                last_seen=datetime(2023, 12, 24, 15, 30, 0, tzinfo=UTC),
+                closed_at=datetime(2023, 12, 24, 15, 30, 0, tzinfo=UTC),
+            ),
+        ]
 
 
 if __name__ == "__main__":
