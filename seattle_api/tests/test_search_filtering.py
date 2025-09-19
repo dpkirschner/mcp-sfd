@@ -354,7 +354,7 @@ class TestSearchFilterHelpers:
         active_incidents = [
             i
             for i in comprehensive_incidents
-            if i.status == IncidentStatus.ACTIVE.value
+            if i.status == IncidentStatus.ACTIVE
         ]
         result = _apply_search_filters(
             comprehensive_incidents, status_filter=IncidentStatus.ACTIVE
@@ -381,7 +381,7 @@ class TestSearchFilterHelpers:
                 i
                 for i in comprehensive_incidents
                 if "fire" in i.incident_type.lower()
-                and i.status == IncidentStatus.ACTIVE.value
+                and i.status == IncidentStatus.ACTIVE
             ]
         )
 

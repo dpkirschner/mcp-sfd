@@ -97,7 +97,7 @@ class IncidentSearchParams(BaseModel):
         None, description="Filter incidents before this datetime"
     )
 
-    model_config = ConfigDict(use_enum_values=True)
+    model_config = ConfigDict(use_enum_values=False)
 
     @field_serializer("since", "until")
     def serialize_datetime(self, value: datetime | None) -> str | None:

@@ -70,13 +70,18 @@ class Incident(BaseModel):
         return cleaned_units
 
     model_config = ConfigDict(
-        use_enum_values=True,
+        use_enum_values=False,
     )
 
     @field_serializer("incident_datetime", "first_seen", "last_seen", "closed_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:
         """Serialize datetime fields to ISO format."""
         return value.isoformat() if value else None
+
+    @field_serializer("status")
+    def serialize_status(self, value: IncidentStatus) -> str:
+        """Serialize status enum to string value."""
+        return value.value
 
 
 class RawIncident(BaseModel):

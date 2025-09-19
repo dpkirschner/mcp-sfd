@@ -140,7 +140,7 @@ class TestIncidentCache:
 
         active = cache.get_active_incidents()
         assert len(active) == 2  # Only the active ones
-        assert all(inc.status == IncidentStatus.ACTIVE.value for inc in active)
+        assert all(inc.status == IncidentStatus.ACTIVE for inc in active)
 
         # Check sorting (newest first)
         assert active[0].incident_datetime > active[1].incident_datetime
@@ -168,7 +168,7 @@ class TestIncidentCache:
         assert success is True
 
         retrieved = cache.get_incident(sample_incident.incident_id)
-        assert retrieved.status == IncidentStatus.CLOSED.value
+        assert retrieved.status == IncidentStatus.CLOSED
         assert retrieved.closed_at is not None
 
         # Test marking already closed incident
@@ -191,12 +191,12 @@ class TestIncidentCache:
 
         # Check that F230001235 was marked as closed
         incident_235 = cache.get_incident("F230001235")
-        assert incident_235.status == IncidentStatus.CLOSED.value
+        assert incident_235.status == IncidentStatus.CLOSED
         assert incident_235.closed_at is not None
 
         # Check that F230001234 is still active with updated last_seen
         incident_234 = cache.get_incident("F230001234")
-        assert incident_234.status == IncidentStatus.ACTIVE.value
+        assert incident_234.status == IncidentStatus.ACTIVE
 
     def test_search_incidents_by_type(self, cache, sample_incidents):
         """Test searching incidents by type."""
@@ -226,7 +226,7 @@ class TestIncidentCache:
         filters = IncidentSearchFilters(status=IncidentStatus.ACTIVE)
         results = cache.search_incidents(filters)
         assert len(results) == 2
-        assert all(inc.status == IncidentStatus.ACTIVE.value for inc in results)
+        assert all(inc.status == IncidentStatus.ACTIVE for inc in results)
 
     def test_search_incidents_by_priority(self, cache, sample_incidents):
         """Test searching incidents by priority."""

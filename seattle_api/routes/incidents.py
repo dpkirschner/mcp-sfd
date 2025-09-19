@@ -194,7 +194,7 @@ async def get_all_incidents(
                 "offset": offset,
                 "has_more": offset + limit < total_count,
                 "filters_applied": {
-                    "status": status_filter.value if status_filter else None,
+                    "status": status_filter if status_filter else None,
                     "incident_type": incident_type,
                     "address": address,
                     "priority": priority,
@@ -316,7 +316,7 @@ async def search_incidents(
                 "has_more": offset + limit < total_count,
                 "search_query": q,
                 "filters_applied": {
-                    "status": status_filter.value if status_filter else None,
+                    "status": status_filter if status_filter else None,
                     "incident_type": incident_type,
                     "address": address,
                     "priority": priority,
@@ -422,12 +422,8 @@ def _apply_filters(
 
     # Filter by status
     if status_filter is not None:
-        # Handle case where status is stored as enum value (string) due to use_enum_values=True
-        if isinstance(status_filter, IncidentStatus):
-            status_value = status_filter.value
-        else:
-            status_value = status_filter
-        filtered = [i for i in filtered if i.status == status_value]
+        # Filter by enum instance directly
+        filtered = [i for i in filtered if i.status == status_filter]
 
     # Filter by incident type (partial match, case-insensitive)
     if incident_type:

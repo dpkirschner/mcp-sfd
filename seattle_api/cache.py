@@ -104,7 +104,7 @@ class IncidentCache:
             active = [
                 incident
                 for incident in self._incidents.values()
-                if incident.status == IncidentStatus.ACTIVE.value
+                if incident.status == IncidentStatus.ACTIVE
             ]
             return sorted(active, key=lambda x: x.incident_datetime, reverse=True)
 
@@ -134,7 +134,7 @@ class IncidentCache:
 
             for incident in self._incidents.values():
                 # Status filter
-                if filters.status and incident.status != filters.status.value:
+                if filters.status and incident.status != filters.status:
                     continue
 
                 # Incident type filter (case-insensitive partial match)
@@ -176,8 +176,8 @@ class IncidentCache:
         """
         with self._lock:
             incident = self._incidents.get(incident_id)
-            if incident and incident.status == IncidentStatus.ACTIVE.value:
-                incident.status = IncidentStatus.CLOSED.value
+            if incident and incident.status == IncidentStatus.ACTIVE:
+                incident.status = IncidentStatus.CLOSED
                 incident.closed_at = datetime.utcnow()
                 logger.debug(f"Marked incident {incident_id} as closed")
                 return True
@@ -193,10 +193,10 @@ class IncidentCache:
         """
         with self._lock:
             for incident_id, incident in self._incidents.items():
-                if incident.status == IncidentStatus.ACTIVE.value:
+                if incident.status == IncidentStatus.ACTIVE:
                     if incident_id not in active_incident_ids:
                         # Incident is no longer active, mark as closed
-                        incident.status = IncidentStatus.CLOSED.value
+                        incident.status = IncidentStatus.CLOSED
                         incident.closed_at = datetime.utcnow()
                         logger.debug(f"Auto-closed incident {incident_id}")
                     else:
@@ -346,7 +346,7 @@ class IncidentCache:
         closed_incidents = [
             (incident_id, incident)
             for incident_id, incident in self._incidents.items()
-            if incident.status == IncidentStatus.CLOSED.value and incident.closed_at
+            if incident.status == IncidentStatus.CLOSED and incident.closed_at
         ]
 
         if not closed_incidents:
@@ -398,7 +398,7 @@ class IncidentCache:
 
             for incident_id, incident in self._incidents.items():
                 if (
-                    incident.status == IncidentStatus.CLOSED.value
+                    incident.status == IncidentStatus.CLOSED
                     and incident.closed_at
                     and incident.closed_at < cutoff_time
                 ):
@@ -429,12 +429,12 @@ class IncidentCache:
             active_count = sum(
                 1
                 for i in self._incidents.values()
-                if i.status == IncidentStatus.ACTIVE.value
+                if i.status == IncidentStatus.ACTIVE
             )
             closed_count = sum(
                 1
                 for i in self._incidents.values()
-                if i.status == IncidentStatus.CLOSED.value
+                if i.status == IncidentStatus.CLOSED
             )
 
             # Calculate memory usage estimate

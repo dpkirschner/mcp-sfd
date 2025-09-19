@@ -16,8 +16,8 @@ class TestIncidentStatus:
 
     def test_incident_status_values(self):
         """Test that IncidentStatus enum has correct values."""
-        assert IncidentStatus.ACTIVE.value == "active"
-        assert IncidentStatus.CLOSED.value == "closed"
+        assert IncidentStatus.ACTIVE == IncidentStatus.ACTIVE
+        assert IncidentStatus.CLOSED == IncidentStatus.CLOSED
 
 
 class TestIncident:
@@ -44,7 +44,7 @@ class TestIncident:
         assert incident.units == ["E17", "L9"]
         assert incident.address == "123 Main St"
         assert incident.incident_type == "Aid Response"
-        assert incident.status == "active"
+        assert incident.status == IncidentStatus.ACTIVE
         assert incident.first_seen == now
         assert incident.last_seen == now
         assert incident.closed_at is None

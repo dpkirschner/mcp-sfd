@@ -32,7 +32,7 @@ def expired_incident():
         units=["E1"],
         address="Old Address",
         incident_type="Old Incident",
-        status=IncidentStatus.CLOSED.value,
+        status=IncidentStatus.CLOSED,
         first_seen=old_time,
         last_seen=old_time - timedelta(minutes=30),
         closed_at=old_time - timedelta(minutes=30),
@@ -50,7 +50,7 @@ def recent_closed_incident():
         units=["E2"],
         address="Recent Address",
         incident_type="Recent Incident",
-        status=IncidentStatus.CLOSED.value,
+        status=IncidentStatus.CLOSED,
         first_seen=recent_time,
         last_seen=recent_time - timedelta(minutes=15),
         closed_at=recent_time - timedelta(minutes=15),
@@ -68,7 +68,7 @@ def active_incident():
         units=["E3"],
         address="Active Address",
         incident_type="Active Incident",
-        status=IncidentStatus.ACTIVE.value,
+        status=IncidentStatus.ACTIVE,
         first_seen=now,
         last_seen=now,
     )
@@ -113,7 +113,7 @@ class TestCleanupRetentionPolicy:
             units=["E4"],
             address="Old Active",
             incident_type="Old Active Incident",
-            status=IncidentStatus.ACTIVE.value,
+            status=IncidentStatus.ACTIVE,
             first_seen=old_time,
             last_seen=datetime.utcnow(),  # Still being seen
         )
@@ -144,7 +144,7 @@ class TestCleanupRetentionPolicy:
             units=["E5"],
             address="No Closed At",
             incident_type="No Timestamp",
-            status=IncidentStatus.CLOSED.value,
+            status=IncidentStatus.CLOSED,
             first_seen=now - timedelta(hours=48),
             last_seen=now - timedelta(hours=47),
             closed_at=None,  # No closed timestamp
@@ -316,7 +316,7 @@ class TestCacheSizeAndMemoryManagement:
                 units=["E1"],
                 address=f"Address {i}",
                 incident_type="Test",
-                status=IncidentStatus.CLOSED.value,
+                status=IncidentStatus.CLOSED,
                 first_seen=datetime.utcnow() - timedelta(hours=i),
                 last_seen=datetime.utcnow() - timedelta(hours=i - 1),
                 closed_at=datetime.utcnow() - timedelta(hours=i - 1),
@@ -344,7 +344,7 @@ class TestCacheSizeAndMemoryManagement:
                 units=["E1"],
                 address=f"Address {i}",
                 incident_type="Test",
-                status=IncidentStatus.CLOSED.value,
+                status=IncidentStatus.CLOSED,
                 first_seen=closed_time,
                 last_seen=closed_time,
                 closed_at=closed_time,
@@ -377,7 +377,7 @@ class TestCacheSizeAndMemoryManagement:
                 units=["E1"],
                 address=f"Address {i}",
                 incident_type="Test",
-                status=IncidentStatus.ACTIVE.value,
+                status=IncidentStatus.ACTIVE,
                 first_seen=datetime.utcnow(),
                 last_seen=datetime.utcnow(),
             )
@@ -409,7 +409,7 @@ class TestCacheSizeAndMemoryManagement:
                     units=["E1"],
                     address=f"Address {i}",
                     incident_type="Test",
-                    status=IncidentStatus.ACTIVE.value,
+                    status=IncidentStatus.ACTIVE,
                     first_seen=datetime.utcnow(),
                     last_seen=datetime.utcnow(),
                 )
@@ -447,7 +447,7 @@ class TestCacheStatistics:
         # Add some incidents
         for i in range(5):
             status = (
-                IncidentStatus.ACTIVE.value if i < 3 else IncidentStatus.CLOSED.value
+                IncidentStatus.ACTIVE if i < 3 else IncidentStatus.CLOSED
             )
             incident = Incident(
                 incident_id=f"F23000{i:04d}",
@@ -505,7 +505,7 @@ class TestCacheStatistics:
             units=["E1"],
             address="Test Address",
             incident_type="Test",
-            status=IncidentStatus.ACTIVE.value,
+            status=IncidentStatus.ACTIVE,
             first_seen=datetime.utcnow(),
             last_seen=datetime.utcnow(),
         )
@@ -535,7 +535,7 @@ class TestCacheStatistics:
             units=["E1"],
             address="Test",
             incident_type="Test",
-            status=IncidentStatus.ACTIVE.value,
+            status=IncidentStatus.ACTIVE,
             first_seen=datetime.utcnow(),
             last_seen=datetime.utcnow(),
         )
