@@ -103,4 +103,3 @@ class IncidentSearchParams(BaseModel):
     def serialize_datetime(self, value: datetime | None) -> str | None:
         """Serialize datetime fields to ISO format."""
         return value.isoformat() if value else None
-

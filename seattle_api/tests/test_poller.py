@@ -1,6 +1,5 @@
 """Tests for the incident poller."""
 
-import asyncio
 from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -399,7 +398,9 @@ class TestIncidentPoller:
 
         # Make poll_once hang to trigger timeout
         mock_http_client.fetch_incident_html = AsyncMock()
-        mock_http_client.fetch_incident_html.side_effect = asyncio.TimeoutError("Request timed out")
+        mock_http_client.fetch_incident_html.side_effect = TimeoutError(
+            "Request timed out"
+        )
 
         with pytest.raises(PollingError, match="Poller startup timed out"):
             await poller.start_polling()

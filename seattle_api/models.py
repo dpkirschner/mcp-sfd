@@ -79,7 +79,6 @@ class Incident(BaseModel):
         return value.isoformat() if value else None
 
 
-
 class RawIncident(BaseModel):
     """Raw incident data from HTML parsing."""
 

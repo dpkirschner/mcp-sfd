@@ -6,7 +6,6 @@ live incident data through the Model Context Protocol.
 """
 
 import asyncio
-import json
 import logging
 import sys
 from typing import Any
@@ -14,7 +13,6 @@ from typing import Any
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
-
 
 # Configure logging
 logging.basicConfig(
@@ -52,20 +50,6 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
         # TODO: Route to new tools that communicate with FastAPI service
         logger.error(f"Unknown tool: {name}")
         raise ValueError(f"Unknown tool: {name}")
-
-        # Format response as JSON
-        response_text = json.dumps(result, indent=2, default=str)
-
-        logger.info(
-            f"Tool {name} completed successfully",
-            extra={
-                "tool": name,
-                "result_size": len(response_text),
-                "status": "success",
-            },
-        )
-
-        return [TextContent(type="text", text=response_text)]
 
     except ValueError as e:
         # Handle validation errors
