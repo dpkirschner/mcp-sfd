@@ -3,62 +3,11 @@
 from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
-import pytest
 from fastapi.testclient import TestClient
 
-from seattle_api.main import app
 from seattle_api.models import Incident, IncidentStatus
 from seattle_api.routes.incidents import get_cache
-
-
-@pytest.fixture
-def sample_incidents():
-    """Sample incidents for testing."""
-    return [
-        Incident(
-            incident_id="INC001",
-            incident_datetime=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
-            priority=5,
-            units=["E16", "L9"],
-            address="123 Main St",
-            incident_type="Aid Response",
-            status=IncidentStatus.ACTIVE,
-            first_seen=datetime(2023, 12, 25, 22, 30, 45, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 25, 22, 35, 45, tzinfo=UTC),
-        ),
-        Incident(
-            incident_id="INC002",
-            incident_datetime=datetime(2023, 12, 25, 23, 15, 30, tzinfo=UTC),
-            priority=3,
-            units=["E25", "BC4"],
-            address="456 Oak Ave",
-            incident_type="Structure Fire",
-            status=IncidentStatus.ACTIVE,
-            first_seen=datetime(2023, 12, 25, 23, 15, 30, tzinfo=UTC),
-            last_seen=datetime(2023, 12, 25, 23, 20, 30, tzinfo=UTC),
-        ),
-    ]
-
-
-@pytest.fixture
-def mock_cache(sample_incidents):
-    """Mock cache that returns sample data."""
-    cache = MagicMock()
-    cache.get_active_incidents.return_value = sample_incidents
-    cache.get_all_incidents.return_value = sample_incidents
-    cache.get_incident.side_effect = lambda incident_id: next(
-        (i for i in sample_incidents if i.incident_id == incident_id), None
-    )
-    return cache
-
-
-@pytest.fixture
-def client(mock_cache):
-    """Test client with mocked cache dependency."""
-    app.dependency_overrides[get_cache] = lambda: mock_cache
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides = {}  # Cleanup
+from .conftest import create_test_app
 
 
 def test_health_endpoint(client):
@@ -77,35 +26,37 @@ def test_root_endpoint(client):
     assert "Seattle Fire Department" in data["message"]
 
 
-def test_active_incidents(client, sample_incidents):
+def test_active_incidents(client):
     """Test active incidents endpoint."""
     response = client.get("/incidents/active")
     assert response.status_code == 200
 
     data = response.json()
     assert data["success"] is True
-    assert len(data["data"]) == 2
-    assert data["data"][0]["incident_id"] == "INC001"
+    assert len(data["data"]) == 3  # FIRE001, MED001, ALARM001 are active
+    # Check that we get incident IDs (order may vary)
+    incident_ids = [incident["incident_id"] for incident in data["data"]]
+    assert "FIRE001" in incident_ids
 
 
-def test_all_incidents(client, sample_incidents):
+def test_all_incidents(client):
     """Test all incidents endpoint."""
     response = client.get("/incidents/all")
     assert response.status_code == 200
 
     data = response.json()
     assert data["success"] is True
-    assert len(data["data"]) == 2
+    assert len(data["data"]) == 5  # All 5 incidents from shared data
 
 
-def test_specific_incident(client, sample_incidents):
+def test_specific_incident(client):
     """Test specific incident endpoint."""
-    response = client.get("/incidents/INC001")
+    response = client.get("/incidents/FIRE001")
     assert response.status_code == 200
 
     data = response.json()
     assert data["success"] is True
-    assert data["data"]["incident_id"] == "INC001"
+    assert data["data"]["incident_id"] == "FIRE001"
 
 
 def test_incident_not_found(client):
@@ -120,15 +71,16 @@ def test_cache_error():
     error_cache = MagicMock()
     error_cache.get_active_incidents.side_effect = Exception("Cache error")
 
-    # Override dependency for this specific test
-    app.dependency_overrides[get_cache] = lambda: error_cache
+    # Create test app for this specific test
+    test_app = create_test_app()
+    test_app.dependency_overrides[get_cache] = lambda: error_cache
 
     try:
-        with TestClient(app) as test_client:
+        with TestClient(test_app) as test_client:
             response = test_client.get("/incidents/active")
             assert response.status_code == 500
     finally:
-        app.dependency_overrides = {}  # Cleanup
+        test_app.dependency_overrides = {}  # Cleanup
 
 
 def test_pagination_params(client):
