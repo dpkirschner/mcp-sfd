@@ -14,6 +14,9 @@ from mcp.server import Server
 from mcp.server.stdio import stdio_server
 from mcp.types import TextContent, Tool
 
+# Import tool implementations
+from .tools.get_active_incidents import get_active_incidents
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -26,10 +29,26 @@ logger = logging.getLogger("mcp-sfd")
 # Create the MCP server
 server = Server("mcp-sfd")
 
-
 # Tool definitions with schemas
-# TODO: Add new tools that communicate with FastAPI service
-TOOLS = []
+TOOLS = [
+    Tool(
+        name="seattle.get_active_incidents",
+        description="Get currently active incidents from Seattle Fire Department",
+        inputSchema={
+            "type": "object",
+            "properties": {
+                "cache_ttl_seconds": {
+                    "type": "integer",
+                    "description": "Cache TTL override in seconds (default: 15)",
+                    "minimum": 0,
+                    "maximum": 300,
+                    "default": 15,
+                }
+            },
+            "additionalProperties": False,
+        },
+    )
+]
 
 
 @server.list_tools()
@@ -47,9 +66,12 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
     logger.info(f"Tool called: {name}", extra={"tool": name, "arguments": arguments})
 
     try:
-        # TODO: Route to new tools that communicate with FastAPI service
-        logger.error(f"Unknown tool: {name}")
-        raise ValueError(f"Unknown tool: {name}")
+        # Route to tool implementations
+        if name == "seattle.get_active_incidents":
+            return await get_active_incidents(arguments)
+        else:
+            logger.error(f"Unknown tool: {name}")
+            raise ValueError(f"Unknown tool: {name}")
 
     except ValueError as e:
         # Handle validation errors
@@ -82,7 +104,10 @@ async def call_tool(name: str, arguments: dict[str, Any] | None) -> list[TextCon
 async def cleanup() -> None:
     """Cleanup resources on shutdown."""
     logger.info("Shutting down MCP server")
-    # TODO: Add cleanup for new FastAPI client connections
+    # Clean up FastAPI client connections
+    from .api_client import close_client
+
+    await close_client()
 
 
 async def main() -> None:
